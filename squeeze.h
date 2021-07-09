@@ -13,8 +13,8 @@
 namespace squeeze
 {
 
-    template<CallableGivesIterableStringViews GET_STRINGS, template<typename T> typename TEncoder = NilEncoder>
-    struct StringTable {
+    template<CallableGivesIterableStringViews GET_STRINGS, template<typename T> typename TEncoder>
+    struct StringTableImpl {
         using Encoder = TEncoder<GET_STRINGS>;
 
         template<typename TData>
@@ -44,6 +44,15 @@ namespace squeeze
             return  result;
         }
     };
+
+    template<template<typename T> typename TEncoder = NilEncoder>
+    constexpr auto StringTable(auto makeStringsLambda)
+    {
+        return squeeze::StringTableImpl<decltype(makeStringsLambda), TEncoder>::Compile();
+    }
+
+
+
 }
 
 #endif //SQUEEZE_SQUEEZE_H

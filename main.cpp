@@ -2,12 +2,14 @@
 #include "squeeze.h"
 
 
-constinit auto table = squeeze::StringTable<decltype([]{
+
+
+constinit auto table = squeeze::StringTable([]{
     return std::to_array<std::string_view>({
         "There is little point to using short strings in a compressed string table.",
         "We will include some long strings in the table to test it."
     });
-})>::Compile();
+});
 
 int main()
 {
