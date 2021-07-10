@@ -3,7 +3,6 @@
 
 #include <string_view>
 #include <array>
-#include <stdexcept>
 #include <numeric>
 
 #include "concepts.h"
@@ -12,24 +11,16 @@
 
 namespace squeeze
 {
-
-    template<CallableGivesIterableStringViews GET_STRINGS, template<typename T> typename TEncoder>
-    struct StringTableImpl {
-        using Encoder = TEncoder<GET_STRINGS>;
-
+    namespace {
         template<typename TData>
-        class Impl {
+        class StringTableDataImpl {
         public:
-            constexpr Impl(TData data) : Data{data} {}
+            constexpr StringTableDataImpl(TData data) : Data{data} {}
 
             // the number of strings
             constexpr std::size_t count() const { return TData::NumEntries; }
 
-            constexpr auto operator[](std::size_t idx) const
-            {
-                if (idx >= TData::NumEntries)
-                    throw std::out_of_range("index beyond last string");
-
+            constexpr auto operator[](std::size_t idx) const {
                 return Data[idx];
             }
 
@@ -37,21 +28,58 @@ namespace squeeze
             TData Data;
         };
 
-        static constexpr auto Compile()
-        {
-            constexpr auto data = Encoder::Compile();
-            Impl<decltype(data)> result{data};
-            return  result;
-        }
-    };
+        template<typename TData>
+        class StringMapDataImpl {
+        public:
+            using KeyType = typename TData::KeyType;
 
-    template<template<typename T> typename TEncoder = NilEncoder>
-    constexpr auto StringTable(auto makeStringsLambda)
-    {
-        return squeeze::StringTableImpl<decltype(makeStringsLambda), TEncoder>::Compile();
+            constexpr StringMapDataImpl(TData data) : Data{data} {}
+
+            // the number of strings
+            constexpr std::size_t count() const { return TData::NumEntries; }
+
+            constexpr auto get(KeyType key) const {
+                return Data.get(key);
+            }
+
+            constexpr bool contains(KeyType key) const {
+                return Data.contains(key);
+            }
+
+        private:
+            TData Data;
+        };
+
+
+
+        template<CallableGivesIterableStringViews GET_STRINGS, template<typename T> typename TEncoder>
+        static constexpr auto CompileTable() {
+            constexpr auto data = TEncoder<GET_STRINGS>::Compile();
+            StringTableDataImpl<decltype(data)> result{data};
+            return result;
+        }
+
+        template<typename TKey, CallableGivesIterableKeyedStringViews<TKey> GET_STRINGS, template<typename K, typename T> typename TEncoder>
+        static constexpr auto CompileMap() {
+            constexpr auto data = TEncoder<TKey, GET_STRINGS>::Compile();
+            StringMapDataImpl<decltype(data)> result{data};
+            return result;
+        }
+
     }
 
 
+    template<template<typename T> typename TEncoder = NilTableEncoder>
+    constexpr auto StringTable(auto makeStringsLambda)
+    {
+        return CompileTable<decltype(makeStringsLambda), TEncoder>();
+    }
+
+    template<typename TKey, template<typename K, typename T> typename TEncoder = NilMapEncoder>
+    constexpr auto StringMap(auto makeStringsLambda)
+    {
+        return CompileMap<TKey, decltype(makeStringsLambda), TEncoder>();
+    }
 
 }
 
