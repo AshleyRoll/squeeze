@@ -24,7 +24,7 @@ namespace squeeze
 
                 // find the start of the next string to get its start. This might be the last entry
                 // in which case the nextStart is the end of the storage
-                auto const nextStart = (index < NUM_ENTRIES -1) ? Entries[index+1] : STORE_LENGTH;
+                auto const nextStart = (index < NUM_ENTRIES-1) ? Entries[index+1] : STORE_LENGTH;
                 auto const thisStart = Entries[index];
 
                 return std::string_view{&Storage[thisStart], nextStart - thisStart};
@@ -79,16 +79,16 @@ namespace squeeze
 
             constexpr std::string_view get(KeyType key) const
             {
-                // find the entry index for the key
-                auto entry = std::find_if(Entries.cbegin(), Entries.cend(), [=](auto const &e){return e.Key == key;});
+                // finds the first entry that is no less than the key. May be end, or higher than the key
+                auto entry = std::lower_bound(Entries.begin(), Entries.end(), key, [](auto const &e, auto const& v){return e.Key < v;});
 
-                if(entry == Entries.cend())
+                if(entry == Entries.end() || (*entry).Key != key)   // could be larger
                     throw std::out_of_range{"key not found"};
 
                 // find the start of the next string to get its start. This might be the last entry
                 // in which case the nextStart is the end of the storage
                 auto const next = std::next(entry);
-                auto const nextStart = (next != Entries.cend()) ? (*next).Index : STORE_LENGTH;
+                auto const nextStart = (next != Entries.end()) ? (*next).Index : STORE_LENGTH;
                 auto const thisStart = (*entry).Index;
 
                 return std::string_view{&Storage[thisStart], nextStart - thisStart};
@@ -96,10 +96,10 @@ namespace squeeze
 
             constexpr bool contains(KeyType key) const
             {
-                return Entries.cend() != std::find_if(Entries.cbegin(), Entries.cend(), [=](auto const &e){return e.Key == key;});
+                return Entries.end() != std::find_if(Entries.begin(), Entries.end(), [=](auto const &e){return e.Key == key;});
             }
 
-            std::array<Entry, NUM_ENTRIES> Entries;
+            std::array<Entry, NUM_ENTRIES> Entries; // stored sorted by Key
             std::array<char, STORE_LENGTH> Storage;
         };
 
@@ -117,7 +117,7 @@ namespace squeeze
             TableData<TotalStringLength, NumStrings> result;
 
             // sort the entries before we encode them otherwise out indices won't be right
-            // for lookup as that assumes (for efficiency) that index increases. to calculate length,
+            // for lookup as that assumes (for efficiency) that index increases to calculate length.
             // we could store a length, but that is additional storage that is not required
             //
             // The string table is const, so unfortunately we need a copy. Sorry compiler
