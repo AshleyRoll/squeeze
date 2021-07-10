@@ -14,7 +14,8 @@ namespace squeeze
     {
     public:
         template<std::size_t STORE_LENGTH, std::size_t NUM_ENTRIES>
-        struct TableData {
+        struct TableData
+        {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
 
             constexpr std::string_view operator[](std::size_t index) const
@@ -42,7 +43,7 @@ namespace squeeze
             // work out the size of the result.
             constexpr auto NumStrings = std::distance(st.begin(), st.end());
             constexpr auto TotalStringLength = std::accumulate(
-                    st.begin(), st.end(), 0,
+                    st.begin(), st.end(), std::size_t{0},
                     [](auto total, auto const &sv){ return total + sv.size(); });
 
             TableData<TotalStringLength, NumStrings> result;
@@ -72,7 +73,8 @@ namespace squeeze
         };
 
         template<std::size_t STORE_LENGTH, std::size_t NUM_ENTRIES>
-        struct TableData {
+        struct TableData
+        {
             using KeyType = TKey;
 
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
@@ -111,7 +113,7 @@ namespace squeeze
             // work out the size of the result.
             constexpr auto NumStrings = std::distance(st.begin(), st.end());
             constexpr auto TotalStringLength = std::accumulate(
-                    st.begin(), st.end(), 0,
+                    st.begin(), st.end(), std::size_t{0},
                     [](auto total, auto const &ksv){ return total + ksv.Value.size(); });
 
             TableData<TotalStringLength, NumStrings> result;

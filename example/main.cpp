@@ -1,5 +1,5 @@
 #include <iostream>
-#include "squeeze.h"
+#include <squeeze/squeeze.h>
 
 
 
@@ -32,21 +32,29 @@ auto map = squeeze::StringMap<StringName>([]{
 });
 
 
+void DumpIteratedString(auto string)
+{
+    for(auto c : string)
+        std::cout << c;
+}
+
 void DumpMapEntry(StringName key)
 {
     bool contained = map.contains(key);
 
-    std::cout << "Key: " << (int)key << ((contained) ? " Found: " : " Not Found\n");
+    std::cout << "Key: " << static_cast<int>(key) << ((contained) ? " Found: " : " Not Found\n");
 
-    if(contained)
+    if(contained) {
         std::cout << map.get(key) << "\n";
+    }
 }
 
 int main()
 {
     std::cout << "String Table:\n";
-    for(int i = 0; i < table.count(); ++i)
+    for(std::size_t i = 0; i < table.count(); ++i){
         std::cout << table[i] << "\n";
+    }
 
     std::cout << "\nStringMap:\n";
 

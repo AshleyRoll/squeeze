@@ -11,7 +11,7 @@
 
 namespace squeeze
 {
-    namespace {
+    namespace impl {
         template<typename TData>
         class StringTableDataImpl {
         public:
@@ -72,13 +72,13 @@ namespace squeeze
     template<template<typename T> typename TEncoder = NilTableEncoder>
     constexpr auto StringTable(auto makeStringsLambda)
     {
-        return CompileTable<decltype(makeStringsLambda), TEncoder>();
+        return impl::CompileTable<decltype(makeStringsLambda), TEncoder>();
     }
 
     template<typename TKey, template<typename K, typename T> typename TEncoder = NilMapEncoder>
     constexpr auto StringMap(auto makeStringsLambda)
     {
-        return CompileMap<TKey, decltype(makeStringsLambda), TEncoder>();
+        return impl::CompileMap<TKey, decltype(makeStringsLambda), TEncoder>();
     }
 
 }
