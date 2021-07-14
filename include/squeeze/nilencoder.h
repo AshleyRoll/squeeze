@@ -9,7 +9,6 @@
 
 namespace squeeze
 {
-    template<CallableGivesIterableStringViews GET_STRINGS>
     class NilTableEncoder
     {
     public:
@@ -35,10 +34,10 @@ namespace squeeze
             std::array<char, STORE_LENGTH> Storage;
         };
 
-        static constexpr auto Compile()
+        static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             // get the string table to work with
-            constexpr auto st = GET_STRINGS{}();
+            constexpr auto st = makeStringsLambda();
 
             // work out the size of the result.
             constexpr auto NumStrings = std::distance(st.begin(), st.end());
@@ -62,7 +61,7 @@ namespace squeeze
         }
     };
 
-    template<typename TKey, CallableGivesIterableKeyedStringViews<TKey> GET_STRINGS>
+    template<typename TKey>
     class NilMapEncoder
     {
     public:
@@ -105,10 +104,10 @@ namespace squeeze
             std::array<char, STORE_LENGTH> Storage;
         };
 
-        static constexpr auto Compile()
+        static constexpr auto Compile(CallableGivesIterableKeyedStringViews<TKey> auto makeStrings)
         {
             // get the string table to work with
-            constexpr auto st = GET_STRINGS{}();
+            constexpr auto st = makeStrings();
 
             // work out the size of the result.
             constexpr auto NumStrings = std::distance(st.begin(), st.end());

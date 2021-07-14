@@ -52,16 +52,16 @@ namespace squeeze
 
 
 
-        template<CallableGivesIterableStringViews GET_STRINGS, template<typename T> typename TEncoder>
-        static constexpr auto CompileTable() {
-            constexpr auto data = TEncoder<GET_STRINGS>::Compile();
+        template<typename TEncoder>
+        static constexpr auto CompileTable(CallableGivesIterableStringViews auto f) {
+            constexpr auto data = TEncoder::Compile(f);
             StringTableDataImpl<decltype(data)> result{data};
             return result;
         }
 
-        template<typename TKey, CallableGivesIterableKeyedStringViews<TKey> GET_STRINGS, template<typename K, typename T> typename TEncoder>
-        static constexpr auto CompileMap() {
-            constexpr auto data = TEncoder<TKey, GET_STRINGS>::Compile();
+        template<typename TKey, template<typename K> typename TEncoder>
+        static constexpr auto CompileMap(CallableGivesIterableKeyedStringViews<TKey> auto f) {
+            constexpr auto data = TEncoder<TKey>::Compile(f);
             StringMapDataImpl<decltype(data)> result{data};
             return result;
         }
@@ -69,16 +69,16 @@ namespace squeeze
     }
 
 
-    template<template<typename T> typename TEncoder = NilTableEncoder>
-    constexpr auto StringTable(auto makeStringsLambda)
+    template<typename TEncoder = NilTableEncoder>
+    constexpr auto StringTable(CallableGivesIterableStringViews auto makeStringsLambda)
     {
-        return impl::CompileTable<decltype(makeStringsLambda), TEncoder>();
+        return impl::CompileTable<TEncoder>(makeStringsLambda);
     }
 
-    template<typename TKey, template<typename K, typename T> typename TEncoder = NilMapEncoder>
-    constexpr auto StringMap(auto makeStringsLambda)
+    template<typename TKey, template<typename K> typename TEncoder = NilMapEncoder>
+    constexpr auto StringMap(CallableGivesIterableKeyedStringViews<TKey> auto makeStringsLambda)
     {
-        return impl::CompileMap<TKey, decltype(makeStringsLambda), TEncoder>();
+        return impl::CompileMap<TKey, TEncoder>(makeStringsLambda);
     }
 
 }
