@@ -6,7 +6,7 @@
 using namespace squeeze;
 using Catch::Matchers::Equals;
 
-auto buildTableStrings = [] {
+static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
         "First String",
         "Second String"

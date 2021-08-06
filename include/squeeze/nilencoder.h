@@ -117,7 +117,7 @@ namespace squeeze
 
             TableData<TotalStringLength, NumStrings> result;
 
-            // sort the entries before we encode them otherwise out indices won't be right
+            // sort the entries before we encode them otherwise our indices won't be right
             // for lookup as that assumes (for efficiency) that index increases to calculate length.
             // we could store a length, but that is additional storage that is not required
             //

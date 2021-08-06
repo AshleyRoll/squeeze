@@ -12,7 +12,7 @@ enum class Key {
     String_3
 };
 
-auto buildMapStrings = [] {
+static auto buildMapStrings = [] {
     return std::to_array<KeyedStringView<Key>> ({
         // out of order and missing a value
         {Key::String_3, "Third String"},

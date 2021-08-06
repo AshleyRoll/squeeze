@@ -7,7 +7,7 @@
 
 #include "concepts.h"
 #include "nilencoder.h"
-
+#include "huffmanencoder.h"
 
 namespace squeeze
 {
@@ -24,7 +24,7 @@ namespace squeeze
                 return Data[idx];
             }
 
-        private:
+        //private:
             TData Data;
         };
 
