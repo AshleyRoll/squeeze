@@ -5,6 +5,9 @@
 
 namespace squeeze::lib
 {
+    //
+    // A simple double-linked list that can be used at compile time in constexpr contexts.
+    //
     template<typename T>
     class list
     {
@@ -13,7 +16,7 @@ namespace squeeze::lib
 
         constexpr void push_back(const value_type& v)
         {
-            auto n = new Node{v, nullptr, tail};
+            Node *n = new Node{v, nullptr, tail};
             if(tail != nullptr) {
                 tail->next = n;
             }
@@ -42,7 +45,7 @@ namespace squeeze::lib
 
         constexpr void push_front(const value_type& v)
         {
-            auto n = new Node{v, head, nullptr};
+            Node *n = new Node{v, head, nullptr};
             if(head != nullptr) {
                 head->prev = n;
             }
@@ -69,17 +72,17 @@ namespace squeeze::lib
             }
         }
 
-        constexpr bool empty() const
+        [[nodiscard]] constexpr bool empty() const
         {
             return head == nullptr;
         }
 
-        constexpr value_type front() const
+        [[nodiscard]] constexpr value_type front() const
         {
            return head->value;
         }
 
-        constexpr value_type back() const
+        [[nodiscard]] constexpr value_type back() const
         {
             return tail->value;
         }
@@ -94,9 +97,9 @@ namespace squeeze::lib
 
         constexpr ~list()
         {
+            // ensure all memory is deleted on destruction
             clear();
         }
-
 
     private:
         struct Node
