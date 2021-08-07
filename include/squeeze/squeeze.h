@@ -24,7 +24,7 @@ namespace squeeze
                 return Data[idx];
             }
 
-        //private:
+        private:
             TData Data;
         };
 

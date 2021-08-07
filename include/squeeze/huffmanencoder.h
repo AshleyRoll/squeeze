@@ -4,6 +4,7 @@
 #include <limits>
 #include <algorithm>
 #include <array>
+#include <variant>
 
 #include "concepts.h"
 #include "lib/priority_queue.h"
@@ -11,6 +12,7 @@
 
 namespace squeeze {
 
+    /*
     namespace {
         struct RawString {
         public:
@@ -85,80 +87,127 @@ namespace squeeze {
             char const *Final;
         };
     }
+    */
 
     namespace huffman {
+
+        // Used to count character frequency in source strings
         struct CharFrequency {
             char c;
-            std::size_t f;
+            std::size_t frequency;
         };
 
+        // Used to construct the huffman tree in memory before outputting as an array of Nodes
         struct TreeNode
         {
             std::size_t prob;
             char value;
-            std::size_t index;
-
-            TreeNode *zero;
-            TreeNode *one;
+            std::uint16_t index;
+            std::array<TreeNode*, 2> link;
 
             constexpr TreeNode(std::size_t p, char v)
-                    : prob{p}, value{v}, index{0}, zero{nullptr}, one{nullptr}
+                    : prob{p}, value{v}, index{0}, link{nullptr, nullptr}
             {}
 
-            constexpr TreeNode(std::size_t p, TreeNode* c0, TreeNode *c1)
-                    : prob{p}, value{0}, index{0}, zero{c0}, one{c1}
+            constexpr TreeNode(std::size_t p, TreeNode* n0, TreeNode *n1)
+                    : prob{p}, value{0}, index{0}, link{n0, n1}
             {}
 
             constexpr TreeNode()
-                    : prob{0}, value{0}, index{0}, zero{nullptr}, one{nullptr}
+                    : prob{0}, value{0}, index{0}, link{nullptr, nullptr}
             {}
 
-            constexpr bool IsLeaf() const { return zero == nullptr || one == nullptr; }
+            [[nodiscard]] constexpr bool IsLeaf() const { return link[0] == nullptr || link[1] == nullptr; }
         };
 
+        // Used to store the huffman tree in a flat array.
         struct Node
         {
-            char value;         // character or '\0' if intermediate node
-            std::size_t zero;   // index child node for "zero" bit. if 0 (root node), there is no child
-            std::size_t one;    // index child node for "one" bit. if 0 (root node), there is no child
+        public:
+            // We use an array of 2 words for indexing into the array of Nodes
+            // to build the tree without pointer. 16 bits is more than enough to
+            // handle the number of nodes that could be generated for a character set based on 8 bits.
+            using IndexType = std::uint16_t;
+            using CharType = char;
+            using Links = std::array<IndexType, 2>;
+
+            constexpr Node() = default; // needed to construct array before initialisation
+
+            // Make a leaf node
+            constexpr explicit Node(char c)
+                : data{c}
+            {}
+
+            // Make an intermediate node
+            constexpr Node(std::uint16_t zero, std::uint16_t one)
+                : data{std::to_array({zero, one})}
+            {}
+
+            [[nodiscard]] constexpr bool IsLeaf() const { return std::holds_alternative<char>(data); }
+
+            [[nodiscard]] constexpr CharType value() const { return std::get<char>(data); }
+
+            [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
+            {
+                return std::get<Links>(data)[idx];
+            }
+
+        private:
+            std::variant<char, Links> data;
         };
 
-
+        //
+        // Count the frequency of all the characters in tall the strings to be compressed
+        //
         static constexpr auto CountFrequency(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             // get the string table to work with
             constexpr auto st = makeStringsLambda();
 
-            std::array<std::size_t, std::numeric_limits<std::string_view::value_type>::max()> counts;
+            // one element per possible character value
+            std::array<std::size_t, std::numeric_limits<std::string_view::value_type>::max()> counts{};
             counts.fill(0);
 
-            for(auto &s : st)
-                for(auto c : s)
+            for(auto &s : st) {
+                for (auto c : s) {
                     counts[static_cast<std::size_t>(c)] += 1;
+                }
+            }
 
             return counts;
         }
 
+        //
+        // Build an array of CharFrequency structs for each used character from the original strings
+        // capturing its frequency as character value
+        //
         static constexpr auto BuildFrequencyTable(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             constexpr auto counts = CountFrequency(makeStringsLambda);
+            constexpr auto NumEntries = std::count_if(counts.begin(), counts.end(), [](auto i){return i != 0;});
 
-            constexpr auto entries = std::count_if(counts.begin(), counts.end(), [](auto i){return i != 0;});
-
-            std::array<CharFrequency, entries> ft;
+            std::array<CharFrequency, NumEntries> ft;
             std::size_t e = 0;
             for(std::size_t i = 0; i < counts.size(); ++i)
             {
-                if(counts[i] == 0) continue;
-                ft[e++] = {static_cast<char>(i), counts[i]};
-            }
+                if(counts[i] == 0) {
+                    continue;
+                }
 
-            // sort least common to most common
-            std::sort(ft.begin(), ft.end(), [](auto &a, auto &b) { return a.f < b.f; });
+                ft[e++] = CharFrequency{static_cast<char>(i), counts[i]};
+            }
 
             return ft;
         }
 
+        //
+        // In order to allocate the correct number of nodes to store the Huffman tree, we have to be
+        // able to count the needed nodes and return a constant compile time value. This means we have to
+        // do the work of making a tree twice.
+        //
+        // We optimise the counting but only doing the minimal work, and not making the tree itself.
+        // This works because the Huffman tree is built from the bottom up.
+        //
         static constexpr auto CalculateTreeNodeCount(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             // compute the frequency table
@@ -166,14 +215,17 @@ namespace squeeze {
             constexpr auto NumEntries = std::distance(ft.begin(), ft.end());
 
             // make a queue of probabilities and iterate through as if building the tree
-            // tracking the total number of nodes needed
+            // tracking the total number of nodes needed. Min-heap priority queue.
             lib::priority_queue<std::size_t, NumEntries, std::greater<std::size_t>> queue;
 
+            // initialise the min-priority queue
             for(auto const &f: ft)
             {
-                queue.push(f.f);
+                queue.push(f.frequency);
             }
 
+            // track the number of nodes used. Starting with the leaf nodes we added to the queue.
+            // as we "build" the tree bottom up
             std::size_t numNodes{NumEntries};
 
             while(queue.size() > 1)
@@ -191,29 +243,39 @@ namespace squeeze {
             return numNodes;
         }
 
+        //
+        // Build an array of Nodes which link together using indexes to represent the Huffman tree.
+        //
+        // This flattened tree is then used for generating the encoded strings at compile time, and
+        // decoding the strings character by character at run time.
+        //
         static constexpr auto BuildHuffmanTree(CallableGivesIterableStringViews auto makeStringsLambda)
         {
-            // compute the frequency table
+            // compute the frequency table and calculate the number of tree nodes needed
             constexpr auto ft = BuildFrequencyTable(makeStringsLambda);
             constexpr auto NumEntries = std::distance(ft.begin(), ft.end());
             constexpr auto NumNodes = CalculateTreeNodeCount(makeStringsLambda);
 
-            // compare "greater" to build a min-heap
+            // compare "greater" to build a min-heap priority queue
             auto cmpTreeNode = [](TreeNode const* left, TreeNode const* right){ return left->prob > right->prob; };
 
-            // Build the initial TreeNode min-heap
+            // Build the initial TreeNode min-heap. We allocate storage for all the tree nodes
+            // in the array, then fill them with the initial leaf nodes, and push them into the min-heap
             std::array<TreeNode, NumNodes> nodes;
             lib::priority_queue<TreeNode*, NumEntries, decltype(cmpTreeNode)> queue;
 
             for(std::size_t i = 0; i < NumEntries; ++i)
             {
                 auto const& f = ft[i];
-                nodes[i] = TreeNode{f.f, f.c};
+                nodes[i] = TreeNode{f.frequency, f.c};
                 queue.push(&nodes[i]);
             }
 
             // Build the tree by removing 2 TreeNodes from the priority queue and making
             // a new TreeNode with them as children, and add this back to the queue.
+            //
+            // The top of the min-heap priority queue will be the 2 least used items which
+            // could be leaf nodes or previously combined intermediate nodes.
             //
             // When there is only 1 item left, this is the root of the huffman tree
             std::size_t nextNode{NumEntries};   // next available TreeNode slot to allocate
@@ -237,29 +299,28 @@ namespace squeeze {
             auto rootNode = queue.top();
 
             // Do a breadth first traversal of the node tree to allocate indexes in final output
-            // structure to the nodes.
+            // array to the nodes. This places the root node at index 0, so we know where to start
+            // any traversals.
             lib::list<TreeNode*> remaining;
-            std::size_t i = 0;
+            std::uint16_t i = 0;
             remaining.push_back(rootNode);
             while(!remaining.empty())
             {
-                auto n = remaining.front();
+                auto *n = remaining.front();
                 remaining.pop_front();
 
                 n->index = i++;
 
-                if(n->zero != nullptr)
-                    remaining.push_back(n->zero);
+                if(n->link[0] != nullptr)
+                    remaining.push_back(n->link[0]);
 
-                if(n->one != nullptr)
-                    remaining.push_back(n->one);
+                if(n->link[1] != nullptr)
+                    remaining.push_back(n->link[1]);
             }
-
-            remaining.clear();
 
             // Now that we have numbered the nodes, we iterator over the node data
             // and generate the output ordered set of nodes, using the index from the child nodes
-            // for references.
+            // for the link indexes.
             //
             // Note that intermediate nodes will always have 2 children, and leaf nodes will have none
             std::array<Node, NumNodes> result;
@@ -268,9 +329,9 @@ namespace squeeze {
             {
                 auto idx = n.index;
                 if(n.IsLeaf()) {
-                    result[idx] = Node{ n.value, 0, 0 };
+                    result[idx] = Node{ n.value };
                 } else {
-                    result[idx] = Node{ 0, n.zero->index, n.one->index };
+                    result[idx] = Node{ n.link[0]->index, n.link[1]->index };
                 }
             }
 
@@ -283,14 +344,13 @@ namespace squeeze {
     {
     public:
 
-        template<std::size_t TREE_SIZE, std::size_t NUM_ENTRIES>
+        template<std::size_t NUM_TREE_ENTRIES, std::size_t NUM_ENTRIES>
         struct TableData
         {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
-            static constexpr std::size_t NumTreeNodes = TREE_SIZE;
+            static constexpr std::size_t NumTreeNodes = NUM_TREE_ENTRIES;
 
-            std::array<huffman::Node, TREE_SIZE> HuffmanTree;
-
+            std::array<huffman::Node, NUM_TREE_ENTRIES> HuffmanTree;
         };
 
         static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
