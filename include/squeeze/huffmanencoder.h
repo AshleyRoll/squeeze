@@ -117,7 +117,7 @@ namespace squeeze {
                     : prob{0}, value{0}, index{0}, link{nullptr, nullptr}
             {}
 
-            [[nodiscard]] constexpr bool IsLeaf() const { return link[0] == nullptr || link[1] == nullptr; }
+            [[nodiscard]] constexpr bool IsLeaf() const { return link.at(0) == nullptr || link.at(1) == nullptr; }
         };
 
         // Used to store the huffman tree in a flat array.
@@ -149,7 +149,7 @@ namespace squeeze {
 
             [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
             {
-                return std::get<Links>(data)[idx];
+                return std::get<Links>(data).at(idx);
             }
 
         private:
@@ -170,7 +170,7 @@ namespace squeeze {
 
             for(auto &s : st) {
                 for (auto c : s) {
-                    counts[static_cast<std::size_t>(c)] += 1;
+                    counts.at(static_cast<std::size_t>(c)) += 1;
                 }
             }
 
@@ -190,11 +190,11 @@ namespace squeeze {
             std::size_t e = 0;
             for(std::size_t i = 0; i < counts.size(); ++i)
             {
-                if(counts[i] == 0) {
+                if(counts.at(i) == 0) {
                     continue;
                 }
 
-                ft[e++] = CharFrequency{static_cast<char>(i), counts[i]};
+                ft.at(e++) = CharFrequency{static_cast<char>(i), counts.at(i)};
             }
 
             return ft;
@@ -266,9 +266,9 @@ namespace squeeze {
 
             for(std::size_t i = 0; i < NumEntries; ++i)
             {
-                auto const& f = ft[i];
-                nodes[i] = TreeNode{f.frequency, f.c};
-                queue.push(&nodes[i]);
+                auto const& f = ft.at(i);
+                nodes.at(i) = TreeNode{f.frequency, f.c};
+                queue.push(&nodes.at(i));
             }
 
             // Build the tree by removing 2 TreeNodes from the priority queue and making
@@ -288,8 +288,8 @@ namespace squeeze {
                 queue.pop();
 
                 // create a new tree node & add to queue
-                nodes[nextNode] = TreeNode{ n1->prob + n2->prob, n1, n2 };
-                queue.push(&nodes[nextNode]);
+                nodes.at(nextNode) = TreeNode{ n1->prob + n2->prob, n1, n2 };
+                queue.push(&nodes.at(nextNode));
 
                 // increment next available node
                 nextNode++;
@@ -311,11 +311,13 @@ namespace squeeze {
 
                 n->index = i++;
 
-                if(n->link[0] != nullptr)
-                    remaining.push_back(n->link[0]);
+                if(n->link.at(0) != nullptr) {
+                    remaining.push_back(n->link.at(0));
+                }
 
-                if(n->link[1] != nullptr)
-                    remaining.push_back(n->link[1]);
+                if(n->link.at(1) != nullptr) {
+                    remaining.push_back(n->link.at(1));
+                }
             }
 
             // Now that we have numbered the nodes, we iterator over the node data
@@ -329,9 +331,9 @@ namespace squeeze {
             {
                 auto idx = n.index;
                 if(n.IsLeaf()) {
-                    result[idx] = Node{ n.value };
+                    result.at(idx) = Node{ n.value };
                 } else {
-                    result[idx] = Node{ n.link[0]->index, n.link[1]->index };
+                    result.at(idx) = Node{ n.link.at(0)->index, n.link.at(1)->index };
                 }
             }
 

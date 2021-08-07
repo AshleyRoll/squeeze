@@ -19,15 +19,12 @@ namespace squeeze
 
             constexpr std::string_view operator[](std::size_t index) const
             {
-                if (index >= NUM_ENTRIES)
-                    throw std::out_of_range{"index beyond last string"};
-
                 // find the start of the next string to get its start. This might be the last entry
                 // in which case the nextStart is the end of the storage
                 auto const nextStart = (index < NUM_ENTRIES-1) ? Entries[index+1] : STORE_LENGTH;
-                auto const thisStart = Entries[index];
+                auto const thisStart = Entries.at(index);
 
-                return std::string_view{&Storage[thisStart], nextStart - thisStart};
+                return std::string_view{&Storage.at(thisStart), nextStart - thisStart};
             }
 
             std::array<std::size_t, NUM_ENTRIES> Entries;
@@ -52,7 +49,7 @@ namespace squeeze
             std::size_t idx = 0;
             for (const auto &sv : st) {
                 const auto end = std::copy(sv.begin(), sv.end(), loc);
-                result.Entries[idx] = static_cast<std::size_t>(std::distance(result.Storage.begin(), loc));
+                result.Entries.at(idx) = static_cast<std::size_t>(std::distance(result.Storage.begin(), loc));
 
                 ++idx;
                 loc = end;
@@ -80,8 +77,9 @@ namespace squeeze
 
             constexpr std::string_view get(KeyType key) const
             {
-                // finds the first entry that is no less than the key. May be end, or higher than the key
-                auto entry = std::lower_bound(Entries.begin(), Entries.end(), key, [](auto const &e, auto const& v){return e.Key < v;});
+                // finds the first entry that is no less than the key. May be end(), or higher than the key
+                auto entry = std::lower_bound(Entries.begin(), Entries.end(), key,
+                                              [](auto const &e, auto const& v){return e.Key < v;});
 
                 if(entry == Entries.end() || (*entry).Key != key)   // could be larger
                     throw std::out_of_range{"key not found"};
@@ -92,7 +90,7 @@ namespace squeeze
                 auto const nextStart = (next != Entries.end()) ? (*next).Index : STORE_LENGTH;
                 auto const thisStart = (*entry).Index;
 
-                return std::string_view{&Storage[thisStart], nextStart - thisStart};
+                return std::string_view{&Storage.at(thisStart), nextStart - thisStart};
             }
 
             constexpr bool contains(KeyType key) const
@@ -131,7 +129,7 @@ namespace squeeze
             std::size_t idx = 0;
             for (const auto &ksv : working) {
                 const auto end = std::copy(ksv.Value.begin(), ksv.Value.end(), loc);
-                result.Entries[idx] = Entry{ksv.Key, static_cast<std::size_t>(std::distance(result.Storage.begin(), loc))};
+                result.Entries.at(idx) = Entry{ksv.Key, static_cast<std::size_t>(std::distance(result.Storage.begin(), loc))};
 
                 ++idx;
                 loc = end;

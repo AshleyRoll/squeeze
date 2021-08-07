@@ -1,7 +1,7 @@
 #ifndef SQUEEZE_LIST_H
 #define SQUEEZE_LIST_H
 
-#include <list>
+#include <cstddef>
 
 namespace squeeze::lib
 {

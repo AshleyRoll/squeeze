@@ -1,9 +1,9 @@
 #ifndef SQUEEZE_PRIORITY_QUEUE_H
 #define SQUEEZE_PRIORITY_QUEUE_H
 
+#include <cstddef>
 #include <array>
 #include <functional>
-#include <stdexcept>
 
 namespace squeeze::lib
 {
@@ -15,7 +15,7 @@ namespace squeeze::lib
     class priority_queue
     {
     public:
-        using container_type = std::array<T, N>;
+        using container_type = std::array<T, N>;    // we will use .at() for bounds checking
         using value_compare = Compare;
         using value_type = typename container_type::value_type;
         using size_type = typename container_type::size_type;
@@ -30,11 +30,7 @@ namespace squeeze::lib
 
         constexpr void push(const value_type& v)
         {
-            if(size() == max_size()) {
-                throw std::out_of_range{"priority_queue full"};
-            }
-
-            m_Data[m_Count++] = v;
+            m_Data.at(m_Count++) = v;
 
             if(m_Count > 1) {
                 std::push_heap(&m_Data[0], &m_Data[m_Count], value_compare{});
@@ -43,13 +39,9 @@ namespace squeeze::lib
 
         constexpr void pop()
         {
-            if(empty()) {
-                throw std::out_of_range{"priority_queue empty"};
-            }
-
             std::pop_heap(&m_Data[0], &m_Data[m_Count], value_compare{});
 
-            m_Data[m_Count-1].~T();
+            m_Data.at(m_Count-1).~T();
             m_Count--;
         }
 
