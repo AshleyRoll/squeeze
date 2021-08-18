@@ -104,7 +104,7 @@ static auto buildTableStrings = [] {
 
 SCENARIO("StringTable<HuffmanTableEncoder> can provide correct strings", "[StringTable][HuffmanTableEncoder]") {
     GIVEN("A runtime initialised StringTable<HuffmanTableEncoder>"){
-        const auto table = StringTable<HuffmanTableEncoder>(buildTableStrings);
+        auto const table = StringTable<HuffmanTableEncoder>(buildTableStrings);
 
         THEN("The number of strings should be correct"){
             REQUIRE(table.count() == 3);

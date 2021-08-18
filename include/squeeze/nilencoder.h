@@ -47,8 +47,8 @@ namespace squeeze
             // copy the strings into the result, and build the list of string start locations
             auto loc = result.Storage.begin();
             std::size_t idx = 0;
-            for (const auto &sv : st) {
-                const auto end = std::copy(sv.begin(), sv.end(), loc);
+            for (auto &sv : st) {
+                auto const end = std::copy(sv.begin(), sv.end(), loc);
                 result.Entries.at(idx) = static_cast<std::size_t>(std::distance(result.Storage.begin(), loc));
 
                 ++idx;
@@ -127,8 +127,8 @@ namespace squeeze
             // copy the strings into the result, and build the list of string start locations
             auto loc = result.Storage.begin();
             std::size_t idx = 0;
-            for (const auto &ksv : working) {
-                const auto end = std::copy(ksv.Value.begin(), ksv.Value.end(), loc);
+            for (auto const &ksv : working) {
+                auto const end = std::copy(ksv.Value.begin(), ksv.Value.end(), loc);
                 result.Entries.at(idx) = Entry{ksv.Key, static_cast<std::size_t>(std::distance(result.Storage.begin(), loc))};
 
                 ++idx;

@@ -9,6 +9,7 @@
 #include "concepts.h"
 #include "lib/priority_queue.h"
 #include "lib/list.h"
+#include "lib/bit_stream.h"
 
 namespace squeeze {
 
@@ -103,21 +104,23 @@ namespace squeeze {
             std::size_t prob;
             char value;
             std::uint16_t index;
-            std::array<TreeNode*, 2> link;
+            TreeNode *parent;
+            std::array<TreeNode*, 2> child;
 
-            constexpr TreeNode(std::size_t p, char v)
-                    : prob{p}, value{v}, index{0}, link{nullptr, nullptr}
+
+            constexpr TreeNode(std::size_t p, char v, TreeNode *up)
+                    : prob{p}, value{v}, index{0}, parent{up}, child{nullptr, nullptr}
             {}
 
-            constexpr TreeNode(std::size_t p, TreeNode* n0, TreeNode *n1)
-                    : prob{p}, value{0}, index{0}, link{n0, n1}
+            constexpr TreeNode(std::size_t p, TreeNode* n0, TreeNode *n1, TreeNode *up)
+                    : prob{p}, value{0}, index{0}, parent{up}, child{n0, n1}
             {}
 
             constexpr TreeNode()
-                    : prob{0}, value{0}, index{0}, link{nullptr, nullptr}
+                    : prob{0}, value{0}, index{0}, parent{nullptr}, child{nullptr, nullptr}
             {}
 
-            [[nodiscard]] constexpr bool IsLeaf() const { return link.at(0) == nullptr || link.at(1) == nullptr; }
+            [[nodiscard]] constexpr bool IsLeaf() const { return child.at(0) == nullptr || child.at(1) == nullptr; }
         };
 
         // Used to store the huffman tree in a flat array.
@@ -135,25 +138,209 @@ namespace squeeze {
 
             // Make a leaf node
             constexpr explicit Node(char c)
-                : data{c}
+                : m_Data{c}
             {}
 
             // Make an intermediate node
-            constexpr Node(std::uint16_t zero, std::uint16_t one)
-                : data{std::to_array({zero, one})}
+            constexpr Node(IndexType zero, IndexType one)
+                : m_Data{std::to_array({zero, one})}
             {}
 
-            [[nodiscard]] constexpr bool IsLeaf() const { return std::holds_alternative<char>(data); }
+            [[nodiscard]] constexpr bool IsLeaf() const { return std::holds_alternative<char>(m_Data); }
 
-            [[nodiscard]] constexpr CharType value() const { return std::get<char>(data); }
+            [[nodiscard]] constexpr CharType Value() const { return std::get<char>(m_Data); }
 
             [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
             {
-                return std::get<Links>(data).at(idx);
+                return std::get<Links>(m_Data).at(idx);
             }
 
         private:
-            std::variant<char, Links> data;
+            std::variant<char, Links> m_Data;
+        };
+
+        // we need to know the parent of a node to perform encoding efficiently
+        struct EncodingNode : public Node
+        {
+        public:
+            constexpr EncodingNode() = default; // needed to construct array before initialisation
+
+            // Make a leaf node
+            constexpr explicit EncodingNode(char c, IndexType parentIndex)
+                : Node{c}, m_ParentIndex{parentIndex}
+            {}
+
+            // Make an intermediate node
+            constexpr EncodingNode(IndexType zero, IndexType one, IndexType parentIndex)
+                : Node{zero, one}, m_ParentIndex{parentIndex}
+            {}
+
+            [[nodiscard]] constexpr IndexType Parent() const
+            {
+                return m_ParentIndex;
+            }
+
+        private:
+            IndexType m_ParentIndex;
+        };
+
+        // Encodes the start bit and original length of a compressed string
+        struct Entry
+        {
+            std::size_t firstBit;
+            std::size_t originalStringLength;
+        };
+
+        // Contains the entries and the bitstream they are based on
+        // to store all the compressed strings
+        template<std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS>
+        struct EntryTable
+        {
+            static constexpr std::size_t NumEntries = NUM_ENTRIES;
+            static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
+
+            std::array<Entry, NUM_ENTRIES> Entries;
+            lib::bit_stream<NUM_ENCODED_BITS> CompressedStream;
+        };
+
+        template<std::size_t NUM_NODES>
+        struct EncodingHuffmanTree
+        {
+            static constexpr std::size_t NumNodes = NUM_NODES;
+
+            constexpr std::size_t CalculateLength(char c) const
+            {
+                std::size_t len{0};
+
+                std::size_t idx{FindLeafIndex(c)};
+                // walk up the tree to the parent
+                while(idx != 0) {
+                    auto const &n = m_Tree.at(idx);
+                    ++len;
+                    idx = n.Parent();
+                }
+
+                return len;
+            }
+
+            constexpr std::size_t CalculateLength(std::string_view s) const
+            {
+                std::size_t len{0};
+
+                for(char const c : s) {
+                    //len += CalculateLength(c);
+                    std::size_t idx{FindLeafIndex(c)};
+                    // walk up the tree to the parent
+                    while(idx != 0) {
+                        auto const &n = m_Tree.at(idx);
+                        ++len;
+                        idx = n.Parent();
+                    }
+                }
+
+                return len;
+            }
+
+            constexpr auto CalculateEncodedStringBitLengths(CallableGivesIterableStringViews auto makeStringsLambda) const
+            {
+                // get the string table to work with
+                constexpr auto st = makeStringsLambda();
+                constexpr auto NumStrings = std::distance(st.begin(), st.end());
+
+                // we will return an array of lengths in bits
+                std::array<std::size_t, NumStrings> result;
+
+                std::size_t i{0};
+                for(auto const &s : st) {
+                    result.at(i) = CalculateLength(s);
+                    ++i;
+                }
+
+                return result;
+            }
+
+
+            template<std::size_t NUM_BITS>
+            constexpr std::size_t EncodeString(std::string_view str, std::size_t firstBit, lib::bit_stream<NUM_BITS> stream)
+            {
+                std::size_t i{0};
+
+                for(char const c : str) {
+                    // Get the character length
+                    auto cLen = CalculateLength(c);
+
+                    // find the character leaf node and walk up the tree
+                    // capturing bits as we go. Note that we are traversing bottom up
+                    // so we have to write the bits into the stream reversed.
+                    std::size_t nidx{FindLeafIndex(c)};
+                    while(nidx != 0) {
+                        auto const &n = m_Tree.at(nidx);
+                        auto const &p = m_Tree.at(n.Parent());
+
+                        // determine if this is the one or zero node of the parent
+                        // if the "one" link is our node, bit will be true (1)
+                        // stream is initialised to zero so we don't need to do clears
+                        if(p[1] == nidx) {
+                            stream.set(firstBit + i + cLen);
+                        }
+
+                        // move to next bit
+                        ++i;
+                        --cLen;
+                        nidx = n.Parent();
+                    }
+                }
+
+                return i;
+            }
+
+            constexpr auto MakeEncodedBitStream(CallableGivesIterableStringViews auto makeStringsLambda) const
+            {
+                // get the string table to work with
+                constexpr auto st = makeStringsLambda();
+                constexpr auto NumStrings = std::distance(st.begin(), st.end());
+
+                // get the encoded string lengths
+                constexpr auto stringLengths = CalculateEncodedStringBitLengths(makeStringsLambda);
+
+                constexpr auto totalEncodedLength = std::accumulate(stringLengths.begin(), stringLengths.end());
+
+                // create a suitable bit stream to hold the data
+                EntryTable<NumStrings, totalEncodedLength> result;
+
+                std::size_t entry{0};
+                std::size_t bit{0};
+                for(auto &sv : st) {
+                    // save the original length and the start bit for this string
+                    result.Entries.at(entry) = Entry{ bit, sv.size() };
+
+                    auto numBits = EncodeString(sv, bit, result.CompressedStream);
+                    ++entry;
+                    bit += numBits;
+                }
+
+                return result;
+            }
+
+
+            // find the node for the given character
+            constexpr std::size_t FindLeafIndex(char c) const
+            {
+                // we will just brute force the search looking for leaf nodes
+                // until we find the character. It will be in here.. or we have bug
+                // and the bounds checking will let us know
+                std::size_t i{0};
+                while(true) {
+                    if(m_Tree.at(i).IsLeaf() && m_Tree.at(i).Value() == c)
+                        return i;
+
+                    ++i;
+                }
+            }
+
+
+            // note that node zero is always the root of the tree
+            std::array<EncodingNode, NUM_NODES> m_Tree;
         };
 
         //
@@ -187,9 +374,8 @@ namespace squeeze {
             constexpr auto NumEntries = std::count_if(counts.begin(), counts.end(), [](auto i){return i != 0;});
 
             std::array<CharFrequency, NumEntries> ft;
-            std::size_t e = 0;
-            for(std::size_t i = 0; i < counts.size(); ++i)
-            {
+            std::size_t e{0};
+            for(std::size_t i{0}; i < counts.size(); ++i) {
                 if(counts.at(i) == 0) {
                     continue;
                 }
@@ -219,8 +405,7 @@ namespace squeeze {
             lib::priority_queue<std::size_t, NumEntries, std::greater<std::size_t>> queue;
 
             // initialise the min-priority queue
-            for(auto const &f: ft)
-            {
+            for(auto const &f: ft) {
                 queue.push(f.frequency);
             }
 
@@ -228,8 +413,7 @@ namespace squeeze {
             // as we "build" the tree bottom up
             std::size_t numNodes{NumEntries};
 
-            while(queue.size() > 1)
-            {
+            while(queue.size() > 1) {
                 auto n1 = queue.top();
                 queue.pop();
                 auto n2 = queue.top();
@@ -264,10 +448,9 @@ namespace squeeze {
             std::array<TreeNode, NumNodes> nodes;
             lib::priority_queue<TreeNode*, NumEntries, decltype(cmpTreeNode)> queue;
 
-            for(std::size_t i = 0; i < NumEntries; ++i)
-            {
+            for(std::size_t i{0}; i < NumEntries; ++i) {
                 auto const& f = ft.at(i);
-                nodes.at(i) = TreeNode{f.frequency, f.c};
+                nodes.at(i) = TreeNode{f.frequency, f.c, nullptr};
                 queue.push(&nodes.at(i));
             }
 
@@ -280,23 +463,28 @@ namespace squeeze {
             // When there is only 1 item left, this is the root of the huffman tree
             std::size_t nextNode{NumEntries};   // next available TreeNode slot to allocate
 
-            while(queue.size() > 1)
-            {
+            while(queue.size() > 1) {
                 auto n1 = queue.top();
                 queue.pop();
                 auto n2 = queue.top();
                 queue.pop();
 
                 // create a new tree node & add to queue
-                nodes.at(nextNode) = TreeNode{ n1->prob + n2->prob, n1, n2 };
-                queue.push(&nodes.at(nextNode));
+                nodes.at(nextNode) = TreeNode{ n1->prob + n2->prob, n1, n2, nullptr};
+
+                // set the parent links
+                auto *newNode = &nodes.at(nextNode);
+                n1->parent = newNode;
+                n2->parent = newNode;
+
+                queue.push(newNode);
 
                 // increment next available node
                 nextNode++;
             }
 
             // queue has 1 element which is the top of the tree
-            auto rootNode = queue.top();
+            auto *rootNode = queue.top();
 
             // Do a breadth first traversal of the node tree to allocate indexes in final output
             // array to the nodes. This places the root node at index 0, so we know where to start
@@ -304,19 +492,18 @@ namespace squeeze {
             lib::list<TreeNode*> remaining;
             std::uint16_t i = 0;
             remaining.push_back(rootNode);
-            while(!remaining.empty())
-            {
+            while(!remaining.empty()) {
                 auto *n = remaining.front();
                 remaining.pop_front();
 
                 n->index = i++;
 
-                if(n->link.at(0) != nullptr) {
-                    remaining.push_back(n->link.at(0));
+                if(n->child.at(0) != nullptr) {
+                    remaining.push_back(n->child.at(0));
                 }
 
-                if(n->link.at(1) != nullptr) {
-                    remaining.push_back(n->link.at(1));
+                if(n->child.at(1) != nullptr) {
+                    remaining.push_back(n->child.at(1));
                 }
             }
 
@@ -325,20 +512,23 @@ namespace squeeze {
             // for the link indexes.
             //
             // Note that intermediate nodes will always have 2 children, and leaf nodes will have none
-            std::array<Node, NumNodes> result;
+            EncodingHuffmanTree<NumNodes> result;
 
-            for(auto const& n : nodes)
-            {
+            for(auto const& n : nodes) {
                 auto idx = n.index;
+                EncodingNode::IndexType parentIdx = n.parent != nullptr ? n.parent->index : 0;
+
                 if(n.IsLeaf()) {
-                    result.at(idx) = Node{ n.value };
+                    result.m_Tree.at(idx) = EncodingNode{ n.value, parentIdx };
                 } else {
-                    result.at(idx) = Node{ n.link.at(0)->index, n.link.at(1)->index };
+                    result.m_Tree.at(idx) = EncodingNode{ n.child.at(0)->index, n.child.at(1)->index, parentIdx };
                 }
             }
 
             return result;
         }
+
+
 
     }
 
@@ -346,28 +536,26 @@ namespace squeeze {
     {
     public:
 
-        template<std::size_t NUM_TREE_ENTRIES, std::size_t NUM_ENTRIES>
+        template<std::size_t NUM_TREE_ENTRIES, std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS>
         struct TableData
         {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
             static constexpr std::size_t NumTreeNodes = NUM_TREE_ENTRIES;
+            static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
 
+            huffman::EntryTable<NUM_ENTRIES, NUM_ENCODED_BITS> Encoding;
             std::array<huffman::Node, NUM_TREE_ENTRIES> HuffmanTree;
         };
 
         static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
         {
-            // get the string table to work with
-            constexpr auto st = makeStringsLambda();
+            constexpr auto const tree = huffman::BuildHuffmanTree(makeStringsLambda);
+            constexpr auto const encoding = tree.MakeEncodedBitStream(makeStringsLambda);
 
-            constexpr auto tree = huffman::BuildHuffmanTree(makeStringsLambda);
+            TableData<tree.NumNodes, encoding.NumEntries, encoding.NumEncodedBits> result;
 
-            constexpr auto NumStrings = std::distance(st.begin(), st.end());
-            constexpr auto NumTreeNodes = std::distance(tree.begin(), tree.end());
-
-            TableData<NumTreeNodes, NumStrings> result;
-
-            std::copy(tree.begin(), tree.end(), result.HuffmanTree.begin());
+            result.Encoding = encoding;
+            std::copy(tree.m_Tree.begin(), tree.m_Tree.end(), result.HuffmanTree.begin());
 
             return result;
         }

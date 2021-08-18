@@ -6,4 +6,5 @@ target_sources(tests
         map_nilencoder_tests.cpp
         lib_list_tests.cpp
         lib_priority_queue_tests.cpp
+        lib_bit_stream_tests.cpp
     )
