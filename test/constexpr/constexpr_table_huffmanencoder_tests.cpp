@@ -7,7 +7,7 @@ using Catch::Matchers::Equals;
 
 static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
-#if 1
+#if 0
         "One",
         "Two",
         "Three"

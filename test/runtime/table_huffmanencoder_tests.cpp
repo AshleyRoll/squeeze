@@ -7,7 +7,7 @@ using Catch::Matchers::Equals;
 
 static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
-#if 1
+#if 0
         "Test",
         "one",
         "Two"
@@ -112,7 +112,18 @@ SCENARIO("StringTable<HuffmanTableEncoder> can provide correct strings", "[Strin
     GIVEN("A runtime initialised StringTable<HuffmanTableEncoder>"){
         auto const table = StringTable<HuffmanTableEncoder>(buildTableStrings);
 
-        THEN("The number of strings should be correct"){
+        THEN("The encoded table should be smaller that the source strings") {
+            std::size_t tableLen = sizeof(table);
+
+            auto sourceTable = buildTableStrings();
+            std::size_t sourceLen = 0;
+            for(auto &sv : sourceTable) {
+                sourceLen += sv.size();
+            }
+            REQUIRE(tableLen < sourceLen);
+        }
+
+        AND_THEN("The number of strings should be correct"){
             REQUIRE(table.count() == 3);
         }
 /*

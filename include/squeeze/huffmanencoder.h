@@ -402,46 +402,46 @@ namespace squeeze {
             // build the huffman tree
             constexpr auto tree = BuildHuffmanTree(makeStringsLambda);
 
+            constexpr auto MakeCharacterLookupTable = [=]() {
+                struct CharData
+                {
+                    std::size_t TreeIndex{0};
+                    std::size_t BitLength{0};
+                };
 
-            // ------------------------------------------------------------
-            // Define helper routines now that we have the tree
+                // Build a fast lookup "table" for all the characters
+                std::array<CharData, 256> charLookup;
 
-            // find the node for the given character
-            constexpr auto FindLeafIndex = [=](char c) -> std::size_t
-            {
-                // we will just brute force the search looking for leaf nodes
-                // until we find the character. It will be in here.. or we have bug
-                // and the bounds checking will let us know
-                std::size_t i{0};
-                while(true) {
-                    if(tree.at(i).IsLeaf() && tree.at(i).Value() == c)
-                        return i;
+                for(std::size_t nodeIdx{0}; nodeIdx < tree.size(); ++nodeIdx) {
+                    auto const &node = tree.at(nodeIdx);
+                    if(node.IsLeaf())  {
+                        // this is a leaf, find the bit length for this character
+                        std::size_t len{0};
+                        std::size_t idx{nodeIdx};
 
-                    ++i;
-                }
-            };
+                        // walk up the tree until we get to the root node at index 0
+                        while(idx != 0) {
+                            auto const &n = tree.at(idx);
+                            ++len;
+                            idx = n.Parent();
+                        }
 
-            constexpr auto CalculateCharLength = [=](char c) -> std::size_t
-            {
-                std::size_t len{0};
-
-                std::size_t idx{FindLeafIndex(c)};
-                // walk up the tree to the parent
-                while(idx != 0) {
-                    auto const &n = tree.at(idx);
-                    ++len;
-                    idx = n.Parent();
+                        // store the character data for this node's character
+                        charLookup.at(static_cast<std::size_t>(node.Value())) = CharData{nodeIdx, len};
+                    }
                 }
 
-                return len;
+                return charLookup;
             };
+
+            constexpr auto charLookup = MakeCharacterLookupTable();
 
             constexpr auto CalculateStringLength = [=](std::string_view s) -> std::size_t
             {
                 std::size_t len{0};
 
                 for(char const c : s) {
-                    len += CalculateCharLength(c);
+                    len += charLookup.at(static_cast<std::size_t>(c)).BitLength;
                 }
 
                 return len;
@@ -466,13 +466,15 @@ namespace squeeze {
                 std::size_t i{0};
 
                 for(char const c : str) {
-                    // Get the character length
-                    auto cLen = CalculateCharLength(c);
+                    // Get the character data
+                    auto cd = charLookup.at(static_cast<std::size_t>(c));
 
-                    // find the character leaf node and walk up the tree
+                    auto cLen = cd.BitLength;
+
+                    // starting at the character leaf node, walk up the tree
                     // capturing bits as we go. Note that we are traversing bottom up
                     // so we have to write the bits into the stream reversed.
-                    std::size_t nidx{FindLeafIndex(c)};
+                    std::size_t nidx{cd.TreeIndex};
                     while(nidx != 0) {
                         auto const &n = tree.at(nidx);
                         auto const &p = tree.at(n.Parent());
