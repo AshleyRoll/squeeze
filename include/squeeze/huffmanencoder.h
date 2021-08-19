@@ -203,145 +203,6 @@ namespace squeeze {
             lib::bit_stream<NUM_ENCODED_BITS> CompressedStream;
         };
 
-        template<std::size_t NUM_NODES>
-        struct EncodingHuffmanTree
-        {
-            static constexpr std::size_t NumNodes = NUM_NODES;
-
-            constexpr std::size_t CalculateLength(char c) const
-            {
-                std::size_t len{0};
-
-                std::size_t idx{FindLeafIndex(c)};
-                // walk up the tree to the parent
-                while(idx != 0) {
-                    auto const &n = m_Tree.at(idx);
-                    ++len;
-                    idx = n.Parent();
-                }
-
-                return len;
-            }
-
-            constexpr std::size_t CalculateLength(std::string_view s) const
-            {
-                std::size_t len{0};
-
-                for(char const c : s) {
-                    //len += CalculateLength(c);
-                    std::size_t idx{FindLeafIndex(c)};
-                    // walk up the tree to the parent
-                    while(idx != 0) {
-                        auto const &n = m_Tree.at(idx);
-                        ++len;
-                        idx = n.Parent();
-                    }
-                }
-
-                return len;
-            }
-
-            constexpr auto CalculateEncodedStringBitLengths(CallableGivesIterableStringViews auto makeStringsLambda) const
-            {
-                // get the string table to work with
-                constexpr auto st = makeStringsLambda();
-                constexpr auto NumStrings = std::distance(st.begin(), st.end());
-
-                // we will return an array of lengths in bits
-                std::array<std::size_t, NumStrings> result;
-
-                std::size_t i{0};
-                for(auto const &s : st) {
-                    result.at(i) = CalculateLength(s);
-                    ++i;
-                }
-
-                return result;
-            }
-
-
-            template<std::size_t NUM_BITS>
-            constexpr std::size_t EncodeString(std::string_view str, std::size_t firstBit, lib::bit_stream<NUM_BITS> stream)
-            {
-                std::size_t i{0};
-
-                for(char const c : str) {
-                    // Get the character length
-                    auto cLen = CalculateLength(c);
-
-                    // find the character leaf node and walk up the tree
-                    // capturing bits as we go. Note that we are traversing bottom up
-                    // so we have to write the bits into the stream reversed.
-                    std::size_t nidx{FindLeafIndex(c)};
-                    while(nidx != 0) {
-                        auto const &n = m_Tree.at(nidx);
-                        auto const &p = m_Tree.at(n.Parent());
-
-                        // determine if this is the one or zero node of the parent
-                        // if the "one" link is our node, bit will be true (1)
-                        // stream is initialised to zero so we don't need to do clears
-                        if(p[1] == nidx) {
-                            stream.set(firstBit + i + cLen);
-                        }
-
-                        // move to next bit
-                        ++i;
-                        --cLen;
-                        nidx = n.Parent();
-                    }
-                }
-
-                return i;
-            }
-
-            constexpr auto MakeEncodedBitStream(CallableGivesIterableStringViews auto makeStringsLambda) const
-            {
-                // get the string table to work with
-                constexpr auto st = makeStringsLambda();
-                constexpr auto NumStrings = std::distance(st.begin(), st.end());
-
-                // get the encoded string lengths
-                constexpr auto stringLengths = CalculateEncodedStringBitLengths(makeStringsLambda);
-
-                constexpr auto totalEncodedLength = std::accumulate(stringLengths.begin(), stringLengths.end());
-
-                // create a suitable bit stream to hold the data
-                EntryTable<NumStrings, totalEncodedLength> result;
-
-                std::size_t entry{0};
-                std::size_t bit{0};
-                for(auto &sv : st) {
-                    // save the original length and the start bit for this string
-                    result.Entries.at(entry) = Entry{ bit, sv.size() };
-
-                    auto numBits = EncodeString(sv, bit, result.CompressedStream);
-                    ++entry;
-                    bit += numBits;
-                }
-
-                return result;
-            }
-
-
-            // find the node for the given character
-            constexpr std::size_t FindLeafIndex(char c) const
-            {
-                // we will just brute force the search looking for leaf nodes
-                // until we find the character. It will be in here.. or we have bug
-                // and the bounds checking will let us know
-                std::size_t i{0};
-                while(true) {
-                    if(m_Tree.at(i).IsLeaf() && m_Tree.at(i).Value() == c)
-                        return i;
-
-                    ++i;
-                }
-            }
-
-
-            // note that node zero is always the root of the tree
-            std::array<EncodingNode, NUM_NODES> m_Tree;
-        };
 
         //
         // Count the frequency of all the characters in tall the strings to be compressed
@@ -512,22 +373,148 @@ namespace squeeze {
             // for the link indexes.
             //
             // Note that intermediate nodes will always have 2 children, and leaf nodes will have none
-            EncodingHuffmanTree<NumNodes> result;
+            std::array<EncodingNode, NumNodes> result;
 
             for(auto const& n : nodes) {
                 auto idx = n.index;
                 EncodingNode::IndexType parentIdx = n.parent != nullptr ? n.parent->index : 0;
 
                 if(n.IsLeaf()) {
-                    result.m_Tree.at(idx) = EncodingNode{ n.value, parentIdx };
+                    result.at(idx) = EncodingNode{ n.value, parentIdx };
                 } else {
-                    result.m_Tree.at(idx) = EncodingNode{ n.child.at(0)->index, n.child.at(1)->index, parentIdx };
+                    result.at(idx) = EncodingNode{ n.child.at(0)->index, n.child.at(1)->index, parentIdx };
                 }
             }
 
             return result;
         }
 
+
+        static constexpr auto MakeEncodedBitStream(CallableGivesIterableStringViews auto makeStringsLambda)
+        {
+            // get the string table to work with
+            constexpr auto st = makeStringsLambda();
+            constexpr auto NumStrings = std::distance(st.begin(), st.end());
+
+            // build the huffman tree
+            constexpr auto tree = BuildHuffmanTree(makeStringsLambda);
+
+
+            // ------------------------------------------------------------
+            // Define helper routines now that we have the tree
+
+            // find the node for the given character
+            constexpr auto FindLeafIndex = [=](char c) -> std::size_t
+            {
+                // we will just brute force the search looking for leaf nodes
+                // until we find the character. It will be in here.. or we have bug
+                // and the bounds checking will let us know
+                std::size_t i{0};
+                while(true) {
+                    if(tree.at(i).IsLeaf() && tree.at(i).Value() == c)
+                        return i;
+
+                    ++i;
+                }
+            };
+
+            constexpr auto CalculateCharLength = [=](char c) -> std::size_t
+            {
+                std::size_t len{0};
+
+                std::size_t idx{FindLeafIndex(c)};
+                // walk up the tree to the parent
+                while(idx != 0) {
+                    auto const &n = tree.at(idx);
+                    ++len;
+                    idx = n.Parent();
+                }
+
+                return len;
+            };
+
+            constexpr auto CalculateStringLength = [=](std::string_view s) -> std::size_t
+            {
+                std::size_t len{0};
+
+                for(char const c : s) {
+                    len += CalculateCharLength(c);
+                }
+
+                return len;
+            };
+
+            constexpr auto CalculateEncodedStringBitLengths = [=]()
+            {
+                // we will return an array of lengths in bits
+                std::array<std::size_t, NumStrings> result;
+
+                std::size_t i{0};
+                for(auto const &s : st) {
+                    result.at(i) = CalculateStringLength(s);
+                    ++i;
+                }
+
+                return result;
+            };
+
+            constexpr auto EncodeString = [=]<std::size_t NUM_BITS>(std::string_view str, std::size_t firstBit, lib::bit_stream<NUM_BITS> &stream)
+            {
+                std::size_t i{0};
+
+                for(char const c : str) {
+                    // Get the character length
+                    auto cLen = CalculateCharLength(c);
+
+                    // find the character leaf node and walk up the tree
+                    // capturing bits as we go. Note that we are traversing bottom up
+                    // so we have to write the bits into the stream reversed.
+                    std::size_t nidx{FindLeafIndex(c)};
+                    while(nidx != 0) {
+                        auto const &n = tree.at(nidx);
+                        auto const &p = tree.at(n.Parent());
+
+                        // determine if this is the one or zero node of the parent
+                        // if the "one" link is our node, bit will be true (1)
+                        // stream is initialised to zero so we don't need to do clears
+                        if(p[1] == nidx) {
+                            stream.set(firstBit + i + cLen - 1);
+                        }
+
+                        // move to next bit
+                        ++i;
+                        --cLen;
+                        nidx = n.Parent();
+                    }
+                }
+
+                return i;
+            };
+
+            // ------------------------------------------------------------
+
+
+            // get the encoded string lengths
+            constexpr auto stringLengths = CalculateEncodedStringBitLengths();
+
+            constexpr auto totalEncodedLength = std::accumulate(stringLengths.begin(), stringLengths.end(), 0);
+
+            // create a suitable bit stream to hold the data
+            EntryTable<NumStrings, totalEncodedLength> result;
+
+            std::size_t entry{0};
+            std::size_t bit{0};
+            for(auto &sv : st) {
+                // save the original length and the start bit for this string
+                result.Entries.at(entry) = Entry{ bit, sv.size() };
+
+                auto numBits = EncodeString(sv, bit, result.CompressedStream);
+                ++entry;
+                bit += numBits;
+            }
+
+            return result;
+        }
 
 
     }
@@ -550,12 +537,12 @@ namespace squeeze {
         static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             constexpr auto const tree = huffman::BuildHuffmanTree(makeStringsLambda);
-            constexpr auto const encoding = tree.MakeEncodedBitStream(makeStringsLambda);
+            constexpr auto const encoding = huffman::MakeEncodedBitStream(makeStringsLambda);
 
-            TableData<tree.NumNodes, encoding.NumEntries, encoding.NumEncodedBits> result;
+            TableData<tree.size(), encoding.NumEntries, encoding.NumEncodedBits> result;
 
             result.Encoding = encoding;
-            std::copy(tree.m_Tree.begin(), tree.m_Tree.end(), result.HuffmanTree.begin());
+            std::copy(tree.begin(), tree.end(), result.HuffmanTree.begin());
 
             return result;
         }
