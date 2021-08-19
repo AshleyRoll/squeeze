@@ -193,100 +193,21 @@ namespace squeeze {
 
         // Contains the entries and the bitstream they are based on
         // to store all the compressed strings
-        template<std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS>
-        struct EntryTable
+        template<std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS, std::size_t NUM_TREE_NODES>
+        struct Encoding
         {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
             static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
+            static constexpr std::size_t NumTreeNodes = NUM_TREE_NODES;
 
             std::array<Entry, NUM_ENTRIES> Entries;
             lib::bit_stream<NUM_ENCODED_BITS> CompressedStream;
+            std::array<Node, NUM_TREE_NODES> HuffmanTable;
         };
 
 
-        //
-        // Count the frequency of all the characters in tall the strings to be compressed
-        //
-        static constexpr auto CountFrequency(CallableGivesIterableStringViews auto makeStringsLambda)
-        {
-            // get the string table to work with
-            constexpr auto st = makeStringsLambda();
 
-            // one element per possible character value
-            std::array<std::size_t, std::numeric_limits<std::string_view::value_type>::max()> counts{};
-            counts.fill(0);
 
-            for(auto &s : st) {
-                for (auto c : s) {
-                    counts.at(static_cast<std::size_t>(c)) += 1;
-                }
-            }
-
-            return counts;
-        }
-
-        //
-        // Build an array of CharFrequency structs for each used character from the original strings
-        // capturing its frequency as character value
-        //
-        static constexpr auto BuildFrequencyTable(CallableGivesIterableStringViews auto makeStringsLambda)
-        {
-            constexpr auto counts = CountFrequency(makeStringsLambda);
-            constexpr auto NumEntries = std::count_if(counts.begin(), counts.end(), [](auto i){return i != 0;});
-
-            std::array<CharFrequency, NumEntries> ft;
-            std::size_t e{0};
-            for(std::size_t i{0}; i < counts.size(); ++i) {
-                if(counts.at(i) == 0) {
-                    continue;
-                }
-
-                ft.at(e++) = CharFrequency{static_cast<char>(i), counts.at(i)};
-            }
-
-            return ft;
-        }
-
-        //
-        // In order to allocate the correct number of nodes to store the Huffman tree, we have to be
-        // able to count the needed nodes and return a constant compile time value. This means we have to
-        // do the work of making a tree twice.
-        //
-        // We optimise the counting but only doing the minimal work, and not making the tree itself.
-        // This works because the Huffman tree is built from the bottom up.
-        //
-        static constexpr auto CalculateTreeNodeCount(CallableGivesIterableStringViews auto makeStringsLambda)
-        {
-            // compute the frequency table
-            constexpr auto ft = BuildFrequencyTable(makeStringsLambda);
-            constexpr auto NumEntries = std::distance(ft.begin(), ft.end());
-
-            // make a queue of probabilities and iterate through as if building the tree
-            // tracking the total number of nodes needed. Min-heap priority queue.
-            lib::priority_queue<std::size_t, NumEntries, std::greater<std::size_t>> queue;
-
-            // initialise the min-priority queue
-            for(auto const &f: ft) {
-                queue.push(f.frequency);
-            }
-
-            // track the number of nodes used. Starting with the leaf nodes we added to the queue.
-            // as we "build" the tree bottom up
-            std::size_t numNodes{NumEntries};
-
-            while(queue.size() > 1) {
-                auto n1 = queue.top();
-                queue.pop();
-                auto n2 = queue.top();
-                queue.pop();
-
-                numNodes++; // we would allocate a new node here
-
-                queue.push(n1+n2);
-            }
-
-            return numNodes;
-        }
 
         //
         // Build an array of Nodes which link together using indexes to represent the Huffman tree.
@@ -296,10 +217,92 @@ namespace squeeze {
         //
         static constexpr auto BuildHuffmanTree(CallableGivesIterableStringViews auto makeStringsLambda)
         {
+            //
+            // Count the frequency of all the characters in tall the strings to be compressed
+            //
+            constexpr auto CountFrequency = [=]()
+            {
+                // get the string table to work with
+                constexpr auto st = makeStringsLambda();
+
+                // one element per possible character value
+                std::array<std::size_t, std::numeric_limits<std::string_view::value_type>::max()> counts{};
+                counts.fill(0);
+
+                for(auto &s : st) {
+                    for (auto c : s) {
+                        counts.at(static_cast<std::size_t>(c)) += 1;
+                    }
+                }
+
+                return counts;
+            };
+
+
+            //
+            // Build an array of CharFrequency structs for each used character from the original strings
+            // capturing its frequency as character value
+            //
+            constexpr auto BuildFrequencyTable = [=]()
+            {
+                constexpr auto counts = CountFrequency();
+                constexpr auto NumEntries = std::count_if(counts.begin(), counts.end(), [](auto i){return i != 0;});
+
+                std::array<CharFrequency, NumEntries> ft;
+                std::size_t e{0};
+                for(std::size_t i{0}; i < counts.size(); ++i) {
+                    if(counts.at(i) == 0) {
+                        continue;
+                    }
+
+                    ft.at(e++) = CharFrequency{static_cast<char>(i), counts.at(i)};
+                }
+
+                return ft;
+            };
+
             // compute the frequency table and calculate the number of tree nodes needed
-            constexpr auto ft = BuildFrequencyTable(makeStringsLambda);
-            constexpr auto NumEntries = std::distance(ft.begin(), ft.end());
-            constexpr auto NumNodes = CalculateTreeNodeCount(makeStringsLambda);
+            constexpr auto ft = BuildFrequencyTable();
+            constexpr auto NumFtEntries = std::distance(ft.begin(), ft.end());
+
+            //
+            // In order to allocate the correct number of nodes to store the Huffman tree, we have to be
+            // able to count the needed nodes and return a constant compile time value. This means we have to
+            // do the work of making a tree twice.
+            //
+            // We optimise the counting but only doing the minimal work, and not making the tree itself.
+            // This works because the Huffman tree is built from the bottom up.
+            //
+            constexpr auto CalculateTreeNodeCount = [=]()
+            {
+                // make a queue of probabilities and iterate through as if building the tree
+                // tracking the total number of nodes needed. Min-heap priority queue.
+                lib::priority_queue<std::size_t, NumFtEntries, std::greater<std::size_t>> queue;
+
+                // initialise the min-priority queue
+                for(auto const &f: ft) {
+                    queue.push(f.frequency);
+                }
+
+                // track the number of nodes used. Starting with the leaf nodes we added to the queue.
+                // as we "build" the tree bottom up
+                std::size_t numNodes{NumFtEntries};
+
+                while(queue.size() > 1) {
+                    auto n1 = queue.top();
+                    queue.pop();
+                    auto n2 = queue.top();
+                    queue.pop();
+
+                    numNodes++; // we would allocate a new node here
+
+                    queue.push(n1+n2);
+                }
+
+                return numNodes;
+            };
+
+            constexpr auto NumNodes = CalculateTreeNodeCount();
 
             // compare "greater" to build a min-heap priority queue
             auto cmpTreeNode = [](TreeNode const* left, TreeNode const* right){ return left->prob > right->prob; };
@@ -307,9 +310,9 @@ namespace squeeze {
             // Build the initial TreeNode min-heap. We allocate storage for all the tree nodes
             // in the array, then fill them with the initial leaf nodes, and push them into the min-heap
             std::array<TreeNode, NumNodes> nodes;
-            lib::priority_queue<TreeNode*, NumEntries, decltype(cmpTreeNode)> queue;
+            lib::priority_queue<TreeNode*, NumFtEntries, decltype(cmpTreeNode)> queue;
 
-            for(std::size_t i{0}; i < NumEntries; ++i) {
+            for(std::size_t i{0}; i < NumFtEntries; ++i) {
                 auto const& f = ft.at(i);
                 nodes.at(i) = TreeNode{f.frequency, f.c, nullptr};
                 queue.push(&nodes.at(i));
@@ -322,7 +325,7 @@ namespace squeeze {
             // could be leaf nodes or previously combined intermediate nodes.
             //
             // When there is only 1 item left, this is the root of the huffman tree
-            std::size_t nextNode{NumEntries};   // next available TreeNode slot to allocate
+            std::size_t nextNode{NumFtEntries};   // next available TreeNode slot to allocate
 
             while(queue.size() > 1) {
                 auto n1 = queue.top();
@@ -500,8 +503,9 @@ namespace squeeze {
             constexpr auto totalEncodedLength = std::accumulate(stringLengths.begin(), stringLengths.end(), 0);
 
             // create a suitable bit stream to hold the data
-            EntryTable<NumStrings, totalEncodedLength> result;
+            Encoding<NumStrings, totalEncodedLength, tree.size()> result;
 
+            // Build the entries into the result and write the compressed bit stream
             std::size_t entry{0};
             std::size_t bit{0};
             for(auto &sv : st) {
@@ -513,6 +517,9 @@ namespace squeeze {
                 bit += numBits;
             }
 
+            // copy the huffman tree into the result
+            std::copy(tree.begin(), tree.end(), result.HuffmanTable.begin());
+
             return result;
         }
 
@@ -523,28 +530,11 @@ namespace squeeze {
     {
     public:
 
-        template<std::size_t NUM_TREE_ENTRIES, std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS>
-        struct TableData
-        {
-            static constexpr std::size_t NumEntries = NUM_ENTRIES;
-            static constexpr std::size_t NumTreeNodes = NUM_TREE_ENTRIES;
-            static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
-
-            huffman::EntryTable<NUM_ENTRIES, NUM_ENCODED_BITS> Encoding;
-            std::array<huffman::Node, NUM_TREE_ENTRIES> HuffmanTree;
-        };
-
         static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
         {
-            constexpr auto const tree = huffman::BuildHuffmanTree(makeStringsLambda);
             constexpr auto const encoding = huffman::MakeEncodedBitStream(makeStringsLambda);
 
-            TableData<tree.size(), encoding.NumEntries, encoding.NumEncodedBits> result;
-
-            result.Encoding = encoding;
-            std::copy(tree.begin(), tree.end(), result.HuffmanTree.begin());
-
-            return result;
+            return encoding;
         }
 
     private:
