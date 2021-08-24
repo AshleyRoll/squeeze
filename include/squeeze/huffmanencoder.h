@@ -4,7 +4,9 @@
 #include <limits>
 #include <algorithm>
 #include <array>
+#include <utility>
 #include <variant>
+#include <span>
 
 #include "concepts.h"
 #include "lib/priority_queue.h"
@@ -12,83 +14,6 @@
 #include "lib/bit_stream.h"
 
 namespace squeeze {
-
-    /*
-    namespace {
-        struct RawString {
-        public:
-
-            class Iterator {
-                class ValueHolder {
-                public:
-                    ValueHolder(char value) : Value(value) {}
-
-                    char operator*() { return Value; }
-
-                private:
-                    char Value;
-                };
-
-            public:
-                using value_type = char const;
-                using reference = char;
-                using iterator_category = std::input_iterator_tag;
-                using pointer = char const *;
-                using difference_type = void;
-
-                Iterator(RawString *owner) : Owner{owner} {}
-
-                reference operator*() const {
-                    return *Owner->Current;
-                }
-
-                pointer operator->() const {
-                    return Owner->Current;
-                }
-
-                Iterator &operator++() {
-                    if (!Owner)
-                        throw std::runtime_error("Increment a past-the-end iterator");
-
-                    ++Owner->Current;
-
-                    // if we have reached the end, turn into the end iterator by setting the owner null
-                    if (Owner->Current == Owner->Final)
-                        Owner = nullptr;
-
-                    return *this;
-                }
-
-                ValueHolder operator++(int) {
-                    ValueHolder temp(**this);
-                    ++*this;
-                    return temp;
-                }
-
-
-                friend bool operator==(Iterator const &lhs, Iterator const &rhs) {
-                    return lhs.Owner == rhs.Owner;
-                }
-
-
-            private:
-                RawString *Owner;
-            };
-
-
-            constexpr RawString(char const *start, char const *final)
-                    : Current{start}, Final{final} {}
-
-            Iterator begin() { return Iterator{this}; }
-
-            Iterator end() { return Iterator(nullptr); }
-
-        private:
-            char const *Current;
-            char const *Final;
-        };
-    }
-    */
 
     namespace huffman {
 
@@ -132,7 +57,7 @@ namespace squeeze {
             // handle the number of nodes that could be generated for a character set based on 8 bits.
             using IndexType = std::uint16_t;
             using CharType = char;
-            using Links = std::array<IndexType, 2>;
+            using Links = std::array<IndexType, 2>; // [zeroLink, oneLink]
 
             constexpr Node() = default; // needed to construct array before initialisation
 
@@ -187,9 +112,153 @@ namespace squeeze {
         // Encodes the start bit and original length of a compressed string
         struct Entry
         {
-            std::size_t firstBit;
-            std::size_t originalStringLength;
+            std::size_t FirstBit;
+            std::size_t OriginalStringLength;
         };
+
+
+        // Represents a string that is being accessed. We have to do this via iteration,
+        // so we don't have to build the entire string in memory before using it - this would
+        // make compressing it pointless in a memory constrained environment.
+        //
+        // Note: we don't template this object and handle data as spans so that we have to have
+        // multiple copies of this code if more than one string table is defined in an application
+        struct IterableString
+        {
+        private:
+            class ValueHolder
+            {
+            public:
+                explicit ValueHolder(char value) : Value(value) {}
+
+                char operator*() { return Value; }
+
+            private:
+                char Value;
+            };
+
+        public:
+            using BitAccessorFunc = std::function<bool(std::size_t)>;   // index 0 = first bit in encoded string
+
+            class Iterator
+            {
+            public:
+                using value_type = char const;
+                using reference = char;
+                using iterator_category = std::input_iterator_tag;
+                using pointer = char const *;
+                using difference_type = void;
+
+                struct EndPosition{IterableString const &str;};
+
+                explicit Iterator(IterableString const &owner)
+                    : m_Owner{owner}
+                    , m_CharPosition{0}
+                {
+                    // handle empty string
+                    if(m_Owner.m_StringLength == 0) {
+                        // turn into end iterator
+                        m_CharPosition = m_Owner.m_StringLength;
+                    } else {
+                        // load the first character
+                        next();
+                        m_CharPosition = 0;
+                    }
+                }
+
+                explicit Iterator(EndPosition pos)
+                : m_Owner{pos.str}
+                , m_CharPosition{m_Owner.m_StringLength}
+                {}
+
+                reference operator*() const {
+                    return m_Current;
+                }
+
+                pointer operator->() const {
+                    return &m_Current;
+                }
+
+                Iterator &operator++() {
+                    if (is_done())
+                        throw std::runtime_error("Increment past-the-end iterator");
+
+                    next();
+
+                    return *this;
+                }
+
+                ValueHolder operator++(int) {
+                    ValueHolder temp(**this);
+                    ++*this;
+                    return temp;
+                }
+
+                friend bool operator==(Iterator const &lhs, Iterator const &rhs) {
+                    return lhs.m_CharPosition == rhs.m_CharPosition;
+                    //(lhs.m_Owner == rhs.m_Owner && lhs.m_CharPosition == rhs.m_CharPosition);
+                }
+
+            private:
+                [[nodiscard]] bool is_done() const
+                {
+                    return m_CharPosition >= m_Owner.m_StringLength;
+                }
+
+                void next()
+                {
+                    // we can only fetch up to the last character, but need to increment past end
+                    // for end iterator comparison
+                    if(m_CharPosition + 1 < m_Owner.m_StringLength) {
+                        std::size_t i{0};    // start at root node
+
+                        // walk the node tree using the bit stream until we get to a leaf node.
+                        // Then return the character encoded by that node
+                        while(!m_Owner.m_Nodes[i].IsLeaf()) {
+                            auto bit = m_Owner.m_GetBit(m_NextBit++);
+                            i = m_Owner.m_Nodes[i][static_cast<std::size_t>(bit)];
+                        }
+
+                        m_Current = m_Owner.m_Nodes[i].Value();
+                    }
+
+                    ++m_CharPosition;
+                }
+
+                IterableString const &m_Owner;
+
+                // iteration state
+                char m_Current{0};
+                std::size_t m_NextBit{0};
+                std::size_t m_CharPosition{0};
+
+            };
+
+
+
+
+            IterableString(
+                    std::size_t stringLength,
+                    BitAccessorFunc getBit,
+                    std::span<Node const> nodes
+            )
+                : m_StringLength{stringLength}
+                , m_GetBit{std::move(getBit)}
+                , m_Nodes{nodes}
+            {}
+
+            [[nodiscard]] std::size_t size() const { return m_StringLength; }
+
+            Iterator begin() { return Iterator{*this}; }
+            Iterator end() { return Iterator{Iterator::EndPosition{*this}}; }
+
+        private:
+            std::size_t const m_StringLength;
+            BitAccessorFunc const m_GetBit;
+            std::span<Node const> const m_Nodes;
+        };
+
+
 
         // Contains the entries and the bitstream they are based on
         // to store all the compressed strings
@@ -199,6 +268,17 @@ namespace squeeze {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
             static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
             static constexpr std::size_t NumTreeNodes = NUM_TREE_NODES;
+
+            IterableString operator[](std::size_t idx) const
+            {
+                auto const thisEntry = Entries.at(idx);
+
+                return IterableString{
+                    thisEntry.OriginalStringLength,
+                    [&, thisEntry](std::size_t i) { return CompressedStream.at(i + thisEntry.FirstBit); },
+                    std::span{HuffmanTable}
+                };
+            }
 
             std::array<Entry, NUM_ENTRIES> Entries;
             lib::bit_stream<NUM_ENCODED_BITS> CompressedStream;
@@ -213,7 +293,7 @@ namespace squeeze {
         // Build an array of Nodes which link together using indexes to represent the Huffman tree.
         //
         // This flattened tree is then used for generating the encoded strings at compile time, and
-        // decoding the strings character by character at run time.
+        // decoding the strings, character by character at run time.
         //
         static constexpr auto BuildHuffmanTree(CallableGivesIterableStringViews auto makeStringsLambda)
         {
@@ -461,7 +541,7 @@ namespace squeeze {
                 return result;
             };
 
-            constexpr auto EncodeString = [=]<std::size_t NUM_BITS>(std::string_view str, std::size_t firstBit, lib::bit_stream<NUM_BITS> &stream)
+            constexpr auto EncodeString = [=]<std::size_t NUM_BITS>(std::string_view str, std::size_t const firstBit, lib::bit_stream<NUM_BITS> &stream)
             {
                 std::size_t i{0};
 
@@ -481,16 +561,21 @@ namespace squeeze {
 
                         // determine if this is the one or zero node of the parent
                         // if the "one" link is our node, bit will be true (1)
-                        // stream is initialised to zero so we don't need to do clears
+                        // stream is initialised to zero, so we don't need to do clears
+                        auto const bitNum = firstBit + i + cLen - 1;
                         if(p[1] == nidx) {
-                            stream.set(firstBit + i + cLen - 1);
+                            stream.set(bitNum);
+                        } else {
+                            stream.clear(bitNum);
                         }
 
                         // move to next bit
-                        ++i;
                         --cLen;
                         nidx = n.Parent();
                     }
+
+                    // move to the next start position
+                    i += cd.BitLength;
                 }
 
                 return i;

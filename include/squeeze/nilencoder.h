@@ -21,7 +21,7 @@ namespace squeeze
             {
                 // find the start of the next string to get its start. This might be the last entry
                 // in which case the nextStart is the end of the storage
-                auto const nextStart = (index < NUM_ENTRIES-1) ? Entries[index+1] : STORE_LENGTH;
+                auto const nextStart = (index < NUM_ENTRIES-1) ? Entries.at(index+1) : STORE_LENGTH;
                 auto const thisStart = Entries.at(index);
 
                 return std::string_view{&Storage.at(thisStart), nextStart - thisStart};

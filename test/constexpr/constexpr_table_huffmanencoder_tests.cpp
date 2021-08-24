@@ -7,10 +7,10 @@ using Catch::Matchers::Equals;
 
 static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
-#if 0
-        "One",
-        "Two",
-        "Three"
+#if 1
+        "This is string One",
+        "This is string Two",
+        "This is string Three"
 #else
         "To be, or not to be--that is the question:\n"
         "Whether 'tis nobler in the mind to suffer\n"
@@ -114,6 +114,54 @@ SCENARIO("StringTable<HuffmanTableEncoder> can be compile-time initialised", "[S
 
         THEN("The number of strings should be correct"){
             STATIC_REQUIRE(table.count() == 3);
+        }
+
+        WHEN("The first string is retrieved") {
+            auto s1 = table[0];
+
+            THEN("The string should match the source data") {
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[0]};
+
+                std::string extracted{s1.begin(), s1.end()};
+
+                REQUIRE(s1.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
+            }
+        }
+
+        WHEN("The second string is retrieved") {
+            auto s2 = table[1];
+
+            THEN("The string should match the source data") {
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[1]};
+
+                std::string extracted{s2.begin(), s2.end()};
+
+                REQUIRE(s2.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
+            }
+        }
+
+        WHEN("The thrid string is retrieved") {
+            auto s3 = table[2];
+
+            THEN("The string should match the source data") {
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[2]};
+
+                std::string extracted{s3.begin(), s3.end()};
+
+                REQUIRE(s3.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
+            }
+        }
+
+        WHEN("An invalid index is accessed") {
+            THEN("An exception should be thrown") {
+                REQUIRE_THROWS(table[3]);
+            }
         }
 /*
         WHEN("The first string is retrieved") {

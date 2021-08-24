@@ -16,7 +16,7 @@ namespace squeeze::lib
    class bit_stream
    {
    public:
-       constexpr std::size_t size() const { return NUM_BITS; }
+       constexpr std::size_t size() const { return NumBits; }
 
        constexpr bit_stream()
        {
@@ -65,6 +65,7 @@ namespace squeeze::lib
 
        constexpr static std::size_t BitsPerStorageElement = sizeof(storage_type) * CHAR_BIT;
        constexpr static std::size_t NumStorageElements = (NUM_BITS/BitsPerStorageElement) + (NUM_BITS%BitsPerStorageElement>0?1:0);
+       constexpr static std::size_t NumBits = NUM_BITS;
 
        std::array<storage_type, NumStorageElements> m_Storage;
    };
