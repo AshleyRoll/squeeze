@@ -13,10 +13,10 @@ static auto buildTableStrings = [] {
     });
 };
 
-SCENARIO("StringTable<NilTableEncoder> Can provide the correct strings", "[StringTable][NilTableEncoder]")
+SCENARIO("StringTable<NilEncoder> Can provide the correct strings", "[StringTable][NilEncoder]")
 {
-    GIVEN("A runtime initialised StringTable<NilTableEncoder>") {
-        auto const table = StringTable<NilTableEncoder>(buildTableStrings);
+    GIVEN("A runtime initialised StringTable<NilEncoder>") {
+        auto const table = StringTable<NilEncoder>(buildTableStrings);
 
         THEN("The number of strings should be correct") {
             REQUIRE(table.count() == 2);

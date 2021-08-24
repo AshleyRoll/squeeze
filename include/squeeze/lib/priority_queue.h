@@ -22,13 +22,15 @@ namespace squeeze::lib
         using reference = typename container_type::reference;
         using const_reference = typename container_type::const_reference;
 
+        constexpr priority_queue() = default;
+
         [[nodiscard]] constexpr size_type max_size() const { return N; }
         [[nodiscard]] constexpr size_type size() const { return m_Count; }
         [[nodiscard]] constexpr bool empty() const { return m_Count == 0; }
 
         [[nodiscard]] constexpr const_reference top() const { return m_Data.front(); }
 
-        constexpr void push(const value_type& v)
+        constexpr void push(value_type const & v)
         {
             m_Data.at(m_Count++) = v;
 
@@ -41,7 +43,6 @@ namespace squeeze::lib
         {
             std::pop_heap(&m_Data[0], &m_Data[m_Count], value_compare{});
 
-            m_Data.at(m_Count-1).~T();
             m_Count--;
         }
 

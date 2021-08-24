@@ -21,10 +21,10 @@ static auto buildMapStrings = [] {
 };
 
 
-SCENARIO("StringMap<NilMapEncoder> can be compile-time initialised", "[StringMap][NilMapEncoder]")
+SCENARIO("StringMap<NilEncoder> can be compile-time initialised", "[StringMap][NilEncoder]")
 {
     GIVEN("A compile-time initialised StringMap<NilEncoder>") {
-        static constinit auto map = StringMap<Key, NilMapEncoder>(buildMapStrings);
+        static constinit auto map = StringMap<Key, NilEncoder>(buildMapStrings);
 
         THEN("The number of strings should be correct") {
             STATIC_REQUIRE(map.count() == 2);
@@ -35,6 +35,7 @@ SCENARIO("StringMap<NilMapEncoder> can be compile-time initialised", "[StringMap
 
             WHEN("The String_1 string is retrieved") {
                 // convert to strings so Catch can use them
+
                 auto t = std::string{map.get(Key::String_1)};
 
                 THEN("The string should match the source data") {

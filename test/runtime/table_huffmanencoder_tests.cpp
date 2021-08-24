@@ -7,6 +7,11 @@ using Catch::Matchers::Equals;
 
 static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
+#if 1
+        "This is string One",
+        "This is string Two",
+        "This is string Three"
+#else
         "To be, or not to be--that is the question:\n"
         "Whether 'tis nobler in the mind to suffer\n"
         "The slings and arrows of outrageous fortune\n"
@@ -99,32 +104,70 @@ static auto buildTableStrings = [] {
         "That ends this strange eventful history,\n"
         "Is second childishness and mere oblivion,\n"
         "Sans teeth, sans eyes, sans taste, sans everything."
+#endif
     });
 };
 
-SCENARIO("StringTable<HuffmanTableEncoder> can provide correct strings", "[StringTable][HuffmanTableEncoder]") {
-    GIVEN("A runtime initialised StringTable<HuffmanTableEncoder>"){
-        const auto table = StringTable<HuffmanTableEncoder>(buildTableStrings);
+SCENARIO("StringTable<HuffmanEncoder> can provide correct strings", "[StringTable][HuffmanEncoder]") {
+    GIVEN("A runtime initialised StringTable<HuffmanEncoder>"){
+        auto const table = StringTable<HuffmanEncoder>(buildTableStrings);
+
+        /*
+        THEN("The encoded table should be smaller that the source strings") {
+            std::size_t tableLen = sizeof(table);
+
+            auto sourceTable = buildTableStrings();
+            std::size_t sourceLen = 0;
+            for(auto &sv : sourceTable) {
+                sourceLen += sv.size();
+            }
+            REQUIRE(tableLen < sourceLen);
+        }
+        */
 
         THEN("The number of strings should be correct"){
             REQUIRE(table.count() == 3);
         }
-/*
+
         WHEN("The first string is retrieved") {
-            // convert to strings so Catch can use them
-            auto t = std::string{table[0]};
+            auto s1 = table[0];
 
             THEN("The string should match the source data") {
-                REQUIRE_THAT( t, Equals("First String") );
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[0]};
+
+                std::string extracted{s1.begin(), s1.end()};
+
+                REQUIRE(s1.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
             }
         }
 
         WHEN("The second string is retrieved") {
-            // convert to strings so Catch can use them
-            auto t = std::string{table[1]};
+            auto s2 = table[1];
 
             THEN("The string should match the source data") {
-                REQUIRE_THAT( t, Equals("Second String") );
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[1]};
+
+                std::string extracted{s2.begin(), s2.end()};
+
+                REQUIRE(s2.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
+            }
+        }
+
+        WHEN("The thrid string is retrieved") {
+            auto s3 = table[2];
+
+            THEN("The string should match the source data") {
+                auto sourceTable = buildTableStrings();
+                auto expected = std::string{sourceTable[2]};
+
+                std::string extracted{s3.begin(), s3.end()};
+
+                REQUIRE(s3.size() == expected.size());
+                REQUIRE_THAT(extracted, Equals(expected));
             }
         }
 
@@ -133,6 +176,5 @@ SCENARIO("StringTable<HuffmanTableEncoder> can provide correct strings", "[Strin
                 REQUIRE_THROWS(table[3]);
             }
         }
-*/
     }
 }
