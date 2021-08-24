@@ -45,7 +45,7 @@ namespace squeeze {
                     : prob{0}, value{0}, index{0}, parent{nullptr}, child{nullptr, nullptr}
             {}
 
-            [[nodiscard]] constexpr bool IsLeaf() const { return child.at(0) == nullptr || child.at(1) == nullptr; }
+            [[nodiscard]] constexpr bool is_leaf() const { return child.at(0) == nullptr || child.at(1) == nullptr; }
         };
 
         // Used to store the huffman tree in a flat array.
@@ -71,9 +71,9 @@ namespace squeeze {
                 : m_Data{std::to_array({zero, one})}
             {}
 
-            [[nodiscard]] constexpr bool IsLeaf() const { return std::holds_alternative<char>(m_Data); }
+            [[nodiscard]] constexpr bool is_leaf() const { return std::holds_alternative<char>(m_Data); }
 
-            [[nodiscard]] constexpr CharType Value() const { return std::get<char>(m_Data); }
+            [[nodiscard]] constexpr CharType value() const { return std::get<char>(m_Data); }
 
             [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
             {
@@ -100,7 +100,7 @@ namespace squeeze {
                 : Node{zero, one}, m_ParentIndex{parentIndex}
             {}
 
-            [[nodiscard]] constexpr IndexType Parent() const
+            [[nodiscard]] constexpr IndexType parent() const
             {
                 return m_ParentIndex;
             }
@@ -129,12 +129,12 @@ namespace squeeze {
             class ValueHolder
             {
             public:
-                explicit ValueHolder(char value) : Value(value) {}
+                explicit ValueHolder(char value) : m_Value(value) {}
 
-                char operator*() { return Value; }
+                char operator*() { return m_Value; }
 
             private:
-                char Value;
+                char m_Value;
             };
 
         public:
@@ -214,12 +214,12 @@ namespace squeeze {
 
                         // walk the node tree using the bit stream until we get to a leaf node.
                         // Then return the character encoded by that node
-                        while(!m_Owner.m_Nodes[i].IsLeaf()) {
+                        while(!m_Owner.m_Nodes[i].is_leaf()) {
                             auto bit = m_Owner.m_GetBit(m_NextBit++);
                             i = m_Owner.m_Nodes[i][static_cast<std::size_t>(bit)];
                         }
 
-                        m_Current = m_Owner.m_Nodes[i].Value();
+                        m_Current = m_Owner.m_Nodes[i].value();
                     }
 
                     ++m_CharPosition;
@@ -271,18 +271,18 @@ namespace squeeze {
 
             IterableString operator[](std::size_t idx) const
             {
-                auto const thisEntry = Entries.at(idx);
+                auto const thisEntry = m_Entries.at(idx);
 
                 return IterableString{
                     thisEntry.OriginalStringLength,
-                    [&, thisEntry](std::size_t i) { return CompressedStream.at(i + thisEntry.FirstBit); },
-                    std::span{HuffmanTable}
+                    [&, thisEntry](std::size_t i) { return m_CompressedStream.at(i + thisEntry.FirstBit); },
+                    std::span{m_HuffmanTable}
                 };
             }
 
-            std::array<Entry, NUM_ENTRIES> Entries;
-            lib::bit_stream<NUM_ENCODED_BITS> CompressedStream;
-            std::array<Node, NUM_TREE_NODES> HuffmanTable;
+            std::array<Entry, NUM_ENTRIES> m_Entries;
+            lib::bit_stream<NUM_ENCODED_BITS> m_CompressedStream;
+            std::array<Node, NUM_TREE_NODES> m_HuffmanTable;
         };
 
 
@@ -462,7 +462,7 @@ namespace squeeze {
                 auto idx = n.index;
                 EncodingNode::IndexType parentIdx = n.parent != nullptr ? n.parent->index : 0;
 
-                if(n.IsLeaf()) {
+                if(n.is_leaf()) {
                     result.at(idx) = EncodingNode{ n.value, parentIdx };
                 } else {
                     result.at(idx) = EncodingNode{ n.child.at(0)->index, n.child.at(1)->index, parentIdx };
@@ -482,6 +482,12 @@ namespace squeeze {
             // build the huffman tree
             constexpr auto tree = BuildHuffmanTree(makeStringsLambda);
 
+            // for efficiency of operations during encoding, we will build a lookup table
+            // mapping each character to its tree index and bit length
+            //
+            // NOTE: even with this, we still help limits in Clang when encoding long strings.
+            //
+            // TODO: encode the actual bitstream for each character to lessen the workload more
             constexpr auto MakeCharacterLookupTable = [=]() {
                 struct CharData
                 {
@@ -494,7 +500,7 @@ namespace squeeze {
 
                 for(std::size_t nodeIdx{0}; nodeIdx < tree.size(); ++nodeIdx) {
                     auto const &node = tree.at(nodeIdx);
-                    if(node.IsLeaf())  {
+                    if(node.is_leaf())  {
                         // this is a leaf, find the bit length for this character
                         std::size_t len{0};
                         std::size_t idx{nodeIdx};
@@ -503,11 +509,11 @@ namespace squeeze {
                         while(idx != 0) {
                             auto const &n = tree.at(idx);
                             ++len;
-                            idx = n.Parent();
+                            idx = n.parent();
                         }
 
                         // store the character data for this node's character
-                        charLookup.at(static_cast<std::size_t>(node.Value())) = CharData{nodeIdx, len};
+                        charLookup.at(static_cast<std::size_t>(node.value())) = CharData{nodeIdx, len};
                     }
                 }
 
@@ -516,6 +522,7 @@ namespace squeeze {
 
             constexpr auto charLookup = MakeCharacterLookupTable();
 
+            // Calculate the length in bits of a string when compressed
             constexpr auto CalculateStringLength = [=](std::string_view s) -> std::size_t
             {
                 std::size_t len{0};
@@ -527,6 +534,7 @@ namespace squeeze {
                 return len;
             };
 
+            // build an array of bit lengths for the resulting compressed strings
             constexpr auto CalculateEncodedStringBitLengths = [=]()
             {
                 // we will return an array of lengths in bits
@@ -541,6 +549,7 @@ namespace squeeze {
                 return result;
             };
 
+            // Encode a string into the bitstream, starting at the firstBit location
             constexpr auto EncodeString = [=]<std::size_t NUM_BITS>(std::string_view str, std::size_t const firstBit, lib::bit_stream<NUM_BITS> &stream)
             {
                 std::size_t i{0};
@@ -557,7 +566,7 @@ namespace squeeze {
                     std::size_t nidx{cd.TreeIndex};
                     while(nidx != 0) {
                         auto const &n = tree.at(nidx);
-                        auto const &p = tree.at(n.Parent());
+                        auto const &p = tree.at(n.parent());
 
                         // determine if this is the one or zero node of the parent
                         // if the "one" link is our node, bit will be true (1)
@@ -571,7 +580,7 @@ namespace squeeze {
 
                         // move to next bit
                         --cLen;
-                        nidx = n.Parent();
+                        nidx = n.parent();
                     }
 
                     // move to the next start position
@@ -580,8 +589,6 @@ namespace squeeze {
 
                 return i;
             };
-
-            // ------------------------------------------------------------
 
 
             // get the encoded string lengths
@@ -597,15 +604,15 @@ namespace squeeze {
             std::size_t bit{0};
             for(auto &sv : st) {
                 // save the original length and the start bit for this string
-                result.Entries.at(entry) = Entry{ bit, sv.size() };
+                result.m_Entries.at(entry) = Entry{bit, sv.size() };
 
-                auto numBits = EncodeString(sv, bit, result.CompressedStream);
+                auto numBits = EncodeString(sv, bit, result.m_CompressedStream);
                 ++entry;
                 bit += numBits;
             }
 
             // copy the huffman tree into the result
-            std::copy(tree.begin(), tree.end(), result.HuffmanTable.begin());
+            std::copy(tree.begin(), tree.end(), result.m_HuffmanTable.begin());
 
             return result;
         }
