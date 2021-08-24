@@ -613,7 +613,7 @@ namespace squeeze {
 
     }
 
-    class HuffmanTableEncoder
+    class HuffmanEncoder
     {
     public:
 

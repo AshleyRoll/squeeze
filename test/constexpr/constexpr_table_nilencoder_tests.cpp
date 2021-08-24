@@ -12,9 +12,9 @@ static auto buildTableStrings = [] {
     });
 };
 
-SCENARIO("StringTable<NilTableEncoder> can be compile-time initialised", "[StringTable][NilTableEncoder]") {
-    GIVEN("A compile-time initialised StringTable<NilTableEncoder>"){
-        static constinit auto table = StringTable<NilTableEncoder>(buildTableStrings);
+SCENARIO("StringTable<NilEncoder> can be compile-time initialised", "[StringTable][NilEncoder]") {
+    GIVEN("A compile-time initialised StringTable<NilEncoder>"){
+        static constinit auto table = StringTable<NilEncoder>(buildTableStrings);
 
         THEN("The number of strings should be correct"){
             STATIC_REQUIRE(table.count() == 2);

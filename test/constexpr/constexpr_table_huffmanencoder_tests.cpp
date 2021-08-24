@@ -108,9 +108,9 @@ static auto buildTableStrings = [] {
     });
 };
 
-SCENARIO("StringTable<HuffmanTableEncoder> can be compile-time initialised", "[StringTable][HuffmanTableEncoder]") {
-    GIVEN("A compile-time initialised StringTable<HuffmanTableEncoder>"){
-        static constinit auto table = StringTable<HuffmanTableEncoder>(buildTableStrings);
+SCENARIO("StringTable<HuffmanEncoder> can be compile-time initialised", "[StringTable][HuffmanEncoder]") {
+    GIVEN("A compile-time initialised StringTable<HuffmanEncoder>"){
+        static constinit auto table = StringTable<HuffmanEncoder>(buildTableStrings);
 
         THEN("The number of strings should be correct"){
             STATIC_REQUIRE(table.count() == 3);

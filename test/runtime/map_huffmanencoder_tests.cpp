@@ -21,10 +21,10 @@ static auto buildMapStrings = [] {
 };
 
 
-SCENARIO("StringMap<NilEncoder> Can provide the correct strings", "[StringMap][NilEncoder]")
+SCENARIO("StringMap<HuffmanEncoder> Can provide the correct strings", "[StringMap][HuffmanEncoder]")
 {
-    GIVEN("A runtime initialised StringMap<NilEncoder>") {
-        auto const map = StringMap<Key, NilEncoder>(buildMapStrings);
+    GIVEN("A runtime initialised StringMap<HuffmanEncoder>") {
+        auto const map = StringMap<Key, HuffmanEncoder>(buildMapStrings);
 
         THEN("The number of strings should be correct") {
             REQUIRE(map.count() == 2);
@@ -35,7 +35,8 @@ SCENARIO("StringMap<NilEncoder> Can provide the correct strings", "[StringMap][N
 
             WHEN("The String_1 string is retrieved") {
                 // convert to strings so Catch can use them
-                auto t = std::string{map.get(Key::String_1)};
+                auto s = map.get(Key::String_1);
+                auto t = std::string{s.begin(), s.end()};
 
                 THEN("The string should match the source data") {
                     REQUIRE_THAT( t, Equals("First String") );
@@ -58,7 +59,8 @@ SCENARIO("StringMap<NilEncoder> Can provide the correct strings", "[StringMap][N
 
             WHEN("The String_3 string is retrieved") {
                 // convert to strings so Catch can use them
-                auto t = std::string{map.get(Key::String_3)};
+                auto s = map.get(Key::String_3);
+                auto t = std::string{s.begin(), s.end()};
 
                 THEN("The string should match the source data") {
                     REQUIRE_THAT( t, Equals("Third String") );

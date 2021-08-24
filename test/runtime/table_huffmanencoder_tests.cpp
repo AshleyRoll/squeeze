@@ -108,9 +108,9 @@ static auto buildTableStrings = [] {
     });
 };
 
-SCENARIO("StringTable<HuffmanTableEncoder> can provide correct strings", "[StringTable][HuffmanTableEncoder]") {
-    GIVEN("A runtime initialised StringTable<HuffmanTableEncoder>"){
-        auto const table = StringTable<HuffmanTableEncoder>(buildTableStrings);
+SCENARIO("StringTable<HuffmanEncoder> can provide correct strings", "[StringTable][HuffmanEncoder]") {
+    GIVEN("A runtime initialised StringTable<HuffmanEncoder>"){
+        auto const table = StringTable<HuffmanEncoder>(buildTableStrings);
 
         /*
         THEN("The encoded table should be smaller that the source strings") {
