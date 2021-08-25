@@ -201,7 +201,6 @@ namespace squeeze {
 
                 constexpr friend bool operator==(Iterator const &lhs, Iterator const &rhs) {
                     return lhs.m_CharPosition == rhs.m_CharPosition;
-                    //(lhs.m_Owner == rhs.m_Owner && lhs.m_CharPosition == rhs.m_CharPosition);
                 }
 
             private:
@@ -238,9 +237,6 @@ namespace squeeze {
                 std::size_t m_CharPosition{0};
 
             };
-
-
-
 
             constexpr IterableString(
                     std::size_t firstBit,
