@@ -3,7 +3,6 @@
 
 #include <string_view>
 #include <array>
-#include <stdexcept>
 
 #include "concepts.h"
 

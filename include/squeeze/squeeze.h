@@ -55,8 +55,8 @@ namespace squeeze
                 auto entry = std::lower_bound(m_Lookup.begin(), m_Lookup.end(), key,
                                               [](auto const &e, auto const& v){return e.Key < v;});
 
-                if(entry == m_Lookup.end() || (*entry).Key != key)   // could be larger
-                    throw std::out_of_range{"key not found"};
+            //    if(entry == m_Lookup.end() || (*entry).Key != key)   // could be larger
+             //       throw std::out_of_range{"key not found"};
 
                 return m_Data[(*entry).Index];
             }

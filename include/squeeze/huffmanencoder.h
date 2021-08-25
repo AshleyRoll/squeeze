@@ -77,7 +77,14 @@ namespace squeeze {
 
             [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
             {
-                return std::get<Links>(m_Data).at(idx);
+                const auto *ptr = std::get_if<Links>(&m_Data);
+                if (ptr != nullptr) {
+                    return ptr->at(idx);
+                }
+
+                // hackity hackity
+                // else.... how do we deal with errors here?
+                return static_cast<IndexType>(-1); //???
             }
 
         private:
@@ -129,16 +136,16 @@ namespace squeeze {
             class ValueHolder
             {
             public:
-                explicit ValueHolder(char value) : m_Value(value) {}
+                constexpr explicit ValueHolder(char value) : m_Value(value) {}
 
-                char operator*() { return m_Value; }
+                constexpr char operator*() { return m_Value; }
 
             private:
                 char m_Value;
             };
 
         public:
-            using BitAccessorFunc = std::function<bool(std::size_t)>;   // index 0 = first bit in encoded string
+            using BitAccessorFunc = bool(*)(std::size_t, std::size_t, const void *);   // index 0 = first bit in encoded string
 
             class Iterator
             {
@@ -151,7 +158,7 @@ namespace squeeze {
 
                 struct EndPosition{IterableString const &str;};
 
-                explicit Iterator(IterableString const &owner)
+                constexpr explicit Iterator(IterableString const &owner)
                     : m_Owner{owner}
                     , m_CharPosition{0}
                 {
@@ -166,46 +173,44 @@ namespace squeeze {
                     }
                 }
 
-                explicit Iterator(EndPosition pos)
+                constexpr explicit Iterator(EndPosition pos)
                 : m_Owner{pos.str}
                 , m_CharPosition{m_Owner.m_StringLength}
                 {}
 
-                reference operator*() const {
+                constexpr reference operator*() const {
                     return m_Current;
                 }
 
-                pointer operator->() const {
+                constexpr pointer operator->() const {
                     return &m_Current;
                 }
 
-                Iterator &operator++() {
-                    if (is_done())
-                        throw std::runtime_error("Increment past-the-end iterator");
+                constexpr Iterator &operator++() {
 
                     next();
 
                     return *this;
                 }
 
-                ValueHolder operator++(int) {
+                constexpr ValueHolder operator++(int) {
                     ValueHolder temp(**this);
                     ++*this;
                     return temp;
                 }
 
-                friend bool operator==(Iterator const &lhs, Iterator const &rhs) {
+                constexpr friend bool operator==(Iterator const &lhs, Iterator const &rhs) {
                     return lhs.m_CharPosition == rhs.m_CharPosition;
                     //(lhs.m_Owner == rhs.m_Owner && lhs.m_CharPosition == rhs.m_CharPosition);
                 }
 
             private:
-                [[nodiscard]] bool is_done() const
+                [[nodiscard]] constexpr bool is_done() const
                 {
                     return m_CharPosition >= m_Owner.m_StringLength;
                 }
 
-                void next()
+                constexpr void next()
                 {
                     // we can only fetch up to the last character, but need to increment past end
                     // for end iterator comparison
@@ -215,7 +220,7 @@ namespace squeeze {
                         // walk the node tree using the bit stream until we get to a leaf node.
                         // Then return the character encoded by that node
                         while(!m_Owner.m_Nodes[i].is_leaf()) {
-                            auto bit = m_Owner.m_GetBit(m_NextBit++);
+                            auto bit = m_Owner.m_GetBit(m_Owner.m_firstBit, m_NextBit++, m_Owner.m_compressedStream);
                             i = m_Owner.m_Nodes[i][static_cast<std::size_t>(bit)];
                         }
 
@@ -237,23 +242,29 @@ namespace squeeze {
 
 
 
-            IterableString(
+            constexpr IterableString(
+                    std::size_t firstBit,
                     std::size_t stringLength,
+                    const void *compressedStream,
                     BitAccessorFunc getBit,
                     std::span<Node const> nodes
             )
-                : m_StringLength{stringLength}
+                : m_firstBit{firstBit}
+                , m_StringLength{stringLength}
+                , m_compressedStream{compressedStream}
                 , m_GetBit{std::move(getBit)}
                 , m_Nodes{nodes}
             {}
 
-            [[nodiscard]] std::size_t size() const { return m_StringLength; }
+            [[nodiscard]] constexpr std::size_t size() const { return m_StringLength; }
 
-            Iterator begin() { return Iterator{*this}; }
-            Iterator end() { return Iterator{Iterator::EndPosition{*this}}; }
+            [[nodiscard]] constexpr Iterator begin() const { return Iterator{*this}; }
+            [[nodiscard]] constexpr Iterator end() const { return Iterator{Iterator::EndPosition{*this}}; }
 
         private:
+            std::size_t const m_firstBit;
             std::size_t const m_StringLength;
+            void const * m_compressedStream;
             BitAccessorFunc const m_GetBit;
             std::span<Node const> const m_Nodes;
         };
@@ -269,13 +280,16 @@ namespace squeeze {
             static constexpr std::size_t NumEncodedBits = NUM_ENCODED_BITS;
             static constexpr std::size_t NumTreeNodes = NUM_TREE_NODES;
 
-            IterableString operator[](std::size_t idx) const
+            constexpr IterableString operator[](std::size_t idx) const
             {
                 auto const thisEntry = m_Entries.at(idx);
 
                 return IterableString{
+                    thisEntry.FirstBit,
                     thisEntry.OriginalStringLength,
-                    [&, thisEntry](std::size_t i) { return m_CompressedStream.at(i + thisEntry.FirstBit); },
+                    &m_CompressedStream,
+                    [](std::size_t i, std::size_t FirstBit, const void *stream) {
+                        return static_cast<const lib::bit_stream<NUM_ENCODED_BITS> *>(stream)->at(i + FirstBit); },
                     std::span{m_HuffmanTable}
                 };
             }

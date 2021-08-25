@@ -4,7 +4,6 @@
 #include <climits>
 #include <cstdint>
 #include <array>
-#include <stdexcept>
 
 namespace squeeze::lib
 {
@@ -26,8 +25,6 @@ namespace squeeze::lib
 
        constexpr void set(std::size_t idx)
        {
-           if(idx >= size())
-               throw std::out_of_range{"bad index"};
 
            auto offset = idx / BitsPerStorageElement;
            auto bit = idx % BitsPerStorageElement;
@@ -38,8 +35,6 @@ namespace squeeze::lib
 
        constexpr void clear(std::size_t idx)
        {
-           if(idx >= size())
-               throw std::out_of_range{"bad index"};
 
            auto offset = idx / BitsPerStorageElement;
            auto bit = idx % BitsPerStorageElement;
@@ -50,8 +45,6 @@ namespace squeeze::lib
 
        constexpr bool at(std::size_t idx) const
        {
-           if(idx >= size())
-               throw std::out_of_range{"bad index"};
 
            auto offset = idx / BitsPerStorageElement;
            auto bit = idx % BitsPerStorageElement;
