@@ -172,8 +172,13 @@ SCENARIO("StringTable<HuffmanEncoder> can provide correct strings", "[StringTabl
         }
 
         WHEN("An invalid index is accessed") {
-            THEN("An exception should be thrown") {
-                REQUIRE_THROWS(table[3]);
+            auto s4 = table[3];
+            THEN("An empty IterableString should be returned") {
+                REQUIRE(s4.size() == 0);
+            }
+            AND_THEN("Iterating the empty string works") {
+                auto t = std::string{s4.begin(), s4.end()};
+                REQUIRE(t.size() == 0);
             }
         }
     }

@@ -1,3 +1,5 @@
+#include <cstdio>
+
 #include "../include/squeeze/squeeze.h"
 
 
@@ -15,15 +17,17 @@ static constexpr auto buildMapStrings = [] {
     });
 };
 
-void putc(const char c) ;
-
-static constexpr auto map = squeeze::StringMap<Key, squeeze::HuffmanEncoder>(buildMapStrings);
+// defaults to huffman encoding
+static constexpr auto map = squeeze::StringMap<Key>(buildMapStrings);
 
 int main()
 {
-  static constexpr auto str1 = map.get(Key::String_1);
+    // grab the first compressed string and dump it to stdout.
+    static constexpr auto str1 = map.get(Key::String_1);
     for (const auto &c : str1) {
-        putc(c);
+        putc(c, stdout);
     }
+
+    putc('\n', stdout);
     return 0;
 }

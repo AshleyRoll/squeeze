@@ -26,26 +26,25 @@ namespace squeeze {
         // Used to construct the huffman tree in memory before outputting as an array of Nodes
         struct TreeNode
         {
+            constexpr TreeNode(std::size_t p, char v, TreeNode *up)
+                : prob{p}, value{v}, index{0}, parent{up}, child{nullptr, nullptr}
+            {}
+
+            constexpr TreeNode(std::size_t p, TreeNode* n0, TreeNode *n1, TreeNode *up)
+                : prob{p}, value{0}, index{0}, parent{up}, child{n0, n1}
+            {}
+
+            constexpr TreeNode()
+                : prob{0}, value{0}, index{0}, parent{nullptr}, child{nullptr, nullptr}
+            {}
+
+            [[nodiscard]] constexpr bool is_leaf() const { return child.at(0) == nullptr || child.at(1) == nullptr; }
+
             std::size_t prob;
             char value;
             std::uint16_t index;
             TreeNode *parent;
             std::array<TreeNode*, 2> child;
-
-
-            constexpr TreeNode(std::size_t p, char v, TreeNode *up)
-                    : prob{p}, value{v}, index{0}, parent{up}, child{nullptr, nullptr}
-            {}
-
-            constexpr TreeNode(std::size_t p, TreeNode* n0, TreeNode *n1, TreeNode *up)
-                    : prob{p}, value{0}, index{0}, parent{up}, child{n0, n1}
-            {}
-
-            constexpr TreeNode()
-                    : prob{0}, value{0}, index{0}, parent{nullptr}, child{nullptr, nullptr}
-            {}
-
-            [[nodiscard]] constexpr bool is_leaf() const { return child.at(0) == nullptr || child.at(1) == nullptr; }
         };
 
         // Used to store the huffman tree in a flat array.
@@ -58,6 +57,9 @@ namespace squeeze {
             using IndexType = std::uint16_t;
             using CharType = char;
             using Links = std::array<IndexType, 2>; // [zeroLink, oneLink]
+
+            // if index returns this, it is out of bounds.
+            static constexpr IndexType BadIndex = std::numeric_limits<IndexType>::max();
 
             constexpr Node() = default; // needed to construct array before initialisation
 
@@ -77,14 +79,14 @@ namespace squeeze {
 
             [[nodiscard]] constexpr IndexType operator[](std::size_t idx) const
             {
+                // NOTE: we are using the non-throwing interface for variants in order to
+                // make the code workable in embedded/small targets without exception support
                 const auto *ptr = std::get_if<Links>(&m_Data);
                 if (ptr != nullptr) {
                     return ptr->at(idx);
                 }
 
-                // hackity hackity
-                // else.... how do we deal with errors here?
-                return static_cast<IndexType>(-1); //???
+                return BadIndex;
             }
 
         private:
@@ -145,6 +147,8 @@ namespace squeeze {
             };
 
         public:
+            // provide a type-erased method to access the bits from a bitstream without having
+            // to template the IterableString on the bitstream size.
             using BitAccessorFunc = bool(*)(std::size_t, std::size_t, const void *);   // index 0 = first bit in encoded string
 
             class Iterator
@@ -158,6 +162,7 @@ namespace squeeze {
 
                 struct EndPosition{IterableString const &str;};
 
+                // used to construct a begin iterator
                 constexpr explicit Iterator(IterableString const &owner)
                     : m_Owner{owner}
                     , m_CharPosition{0}
@@ -173,6 +178,7 @@ namespace squeeze {
                     }
                 }
 
+                // used to construct an end iterator
                 constexpr explicit Iterator(EndPosition pos)
                 : m_Owner{pos.str}
                 , m_CharPosition{m_Owner.m_StringLength}
@@ -187,9 +193,10 @@ namespace squeeze {
                 }
 
                 constexpr Iterator &operator++() {
-
+                    // NOTE: we don't check for end of iteration here, but next() will
+                    // do something sensible. Just expect weird if you run off the end of
+                    // the string
                     next();
-
                     return *this;
                 }
 
@@ -221,6 +228,16 @@ namespace squeeze {
                         while(!m_Owner.m_Nodes[i].is_leaf()) {
                             auto bit = m_Owner.m_GetBit(m_Owner.m_firstBit, m_NextBit++, m_Owner.m_compressedStream);
                             i = m_Owner.m_Nodes[i][static_cast<std::size_t>(bit)];
+
+                            if(i == Node::BadIndex) {
+                                // this is an error that indicates the encoding is incorrect.
+                                // We don't want to involve exceptions so we can support
+                                // embedded/small targets with exceptions disabled.
+                                // Best we can do here in this unlikely scenario
+                                m_Current = '\0';
+                                ++m_CharPosition;
+                                return;
+                            }
                         }
 
                         m_Current = m_Owner.m_Nodes[i].value();
@@ -266,7 +283,6 @@ namespace squeeze {
         };
 
 
-
         // Contains the entries and the bitstream they are based on
         // to store all the compressed strings
         template<std::size_t NUM_ENTRIES, std::size_t NUM_ENCODED_BITS, std::size_t NUM_TREE_NODES>
@@ -278,14 +294,29 @@ namespace squeeze {
 
             constexpr IterableString operator[](std::size_t idx) const
             {
-                auto const thisEntry = m_Entries.at(idx);
+                // bounds check without exceptions
+                if(idx >= NumEntries)
+                    return bad_string();
+
+                auto const thisEntry = m_Entries[idx];
 
                 return IterableString{
                     thisEntry.FirstBit,
                     thisEntry.OriginalStringLength,
                     &m_CompressedStream,
-                    [](std::size_t i, std::size_t FirstBit, const void *stream) {
-                        return static_cast<const lib::bit_stream<NUM_ENCODED_BITS> *>(stream)->at(i + FirstBit); },
+                    [](std::size_t i, std::size_t firstBit, const void *stream) {
+                        return static_cast<const lib::bit_stream<NUM_ENCODED_BITS> *>(stream)->at(i + firstBit); },
+                    std::span{m_HuffmanTable}
+                };
+            }
+
+            // provide a value that is an implementation defined value representing a
+            // bad key or index was requested.
+            constexpr IterableString bad_string() const {
+                // this is an empty string
+                return IterableString{
+                    0, 0, nullptr,
+                    [](std::size_t, std::size_t, const void *){ return false; },
                     std::span{m_HuffmanTable}
                 };
             }
@@ -294,9 +325,6 @@ namespace squeeze {
             lib::bit_stream<NUM_ENCODED_BITS> m_CompressedStream;
             std::array<Node, NUM_TREE_NODES> m_HuffmanTable;
         };
-
-
-
 
 
         //
