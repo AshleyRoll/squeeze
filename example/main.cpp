@@ -1,67 +1,33 @@
-#include <iostream>
-#include <squeeze/squeeze.h>
+#include <cstdio>
+
+#include "../include/squeeze/squeeze.h"
 
 
-
-
-constinit
-auto table = squeeze::StringTable([]{
-    return std::to_array<std::string_view>({
-        "There is little point to using short strings in a compressed string table.",
-        "We will include some long strings in the table to test it."
-    });
-});
-
-enum class StringName
-{
+enum class Key {
     String_1,
     String_2,
-    String_3,
-    String_4,
+    String_3
 };
 
-constinit
-auto map = squeeze::StringMap<StringName>([]{
-    return std::to_array<squeeze::KeyedStringView<StringName>>(
-    {
-        // out of order, and not all keys provided
-        {StringName::String_4, "This is string 4"},
-        {StringName::String_1, "This is string 1"},
-        {StringName::String_2, "This is string 2"},
+static constexpr auto buildMapStrings = [] {
+    return std::to_array<squeeze::KeyedStringView<Key>>({
+      // out of order and missing a value
+      { Key::String_3, "There is little point to using short strings in a compressed string table." },
+      { Key::String_1, "We will include some long strings in the table to test it." },
     });
-});
+};
 
-
-void DumpIteratedString(auto string)
-{
-    for(auto c : string)
-        std::cout << c;
-}
-
-void DumpMapEntry(StringName key)
-{
-    bool contained = map.contains(key);
-
-    std::cout << "Key: " << static_cast<int>(key) << ((contained) ? " Found: " : " Not Found\n");
-
-    if(contained) {
-        std::cout << map.get(key) << "\n";
-    }
-}
+// defaults to huffman encoding
+static constexpr auto map = squeeze::StringMap<Key>(buildMapStrings);
 
 int main()
 {
-    std::cout << "String Table:\n";
-    for(std::size_t i = 0; i < table.count(); ++i){
-        std::cout << table[i] << "\n";
+    // grab the first compressed string and dump it to stdout.
+    static constexpr auto str1 = map.get(Key::String_1);
+    for (const auto &c : str1) {
+        putc(c, stdout);
     }
 
-    std::cout << "\nStringMap:\n";
-
-    DumpMapEntry(StringName::String_1);
-    DumpMapEntry(StringName::String_2);
-    DumpMapEntry(StringName::String_3);
-    DumpMapEntry(StringName::String_4);
-
+    putc('\n', stdout);
     return 0;
 }

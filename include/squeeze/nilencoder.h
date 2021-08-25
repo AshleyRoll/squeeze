@@ -3,7 +3,6 @@
 
 #include <string_view>
 #include <array>
-#include <stdexcept>
 
 #include "concepts.h"
 
@@ -17,14 +16,25 @@ namespace squeeze
         {
             static constexpr std::size_t NumEntries = NUM_ENTRIES;
 
-            constexpr std::string_view operator[](std::size_t index) const
+            constexpr std::string_view operator[](std::size_t idx) const
             {
+                // bounds check without exceptions
+                if(idx >= NumEntries)
+                    return bad_string();
+
                 // find the start of the next string to get its start. This might be the last entry
                 // in which case the nextStart is the end of the storage
-                auto const nextStart = (index < NUM_ENTRIES-1) ? m_Entries.at(index + 1) : STORE_LENGTH;
-                auto const thisStart = m_Entries.at(index);
+                auto const nextStart = (idx < NUM_ENTRIES-1) ? m_Entries.at(idx + 1) : STORE_LENGTH;
+                auto const thisStart = m_Entries[idx];
 
-                return std::string_view{&m_Storage.at(thisStart), nextStart - thisStart};
+                return std::string_view{&m_Storage[thisStart], nextStart - thisStart};
+            }
+
+            // provide a value that is an implementation defined value representing a
+            // bad key or index was requested.
+            constexpr std::string_view bad_string() const
+            {
+                return std::string_view{};
             }
 
             std::array<std::size_t, NUM_ENTRIES> m_Entries;

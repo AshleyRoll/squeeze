@@ -41,8 +41,9 @@ SCENARIO("StringTable<NilEncoder> Can provide the correct strings", "[StringTabl
         }
 
         WHEN("An invalid index is accessed") {
-            THEN("An exception should be thrown") {
-                REQUIRE_THROWS(table[3]);
+            auto s4 = table[3];
+            THEN("An empty string_view should be returned") {
+                REQUIRE(s4.size() == 0);
             }
         }
 

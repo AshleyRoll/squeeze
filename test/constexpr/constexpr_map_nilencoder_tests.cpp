@@ -48,8 +48,9 @@ SCENARIO("StringMap<NilEncoder> can be compile-time initialised", "[StringMap][N
             REQUIRE_FALSE(map.contains(Key::String_2));
 
             WHEN("The String_2 string is retrieved") {
-                THEN("An exception should be thrown") {
-                    REQUIRE_THROWS(map.get(Key::String_2));
+                auto const s = map.get(Key::String_2);
+                THEN("An empty string_view is returned") {
+                    REQUIRE(s.size() == 0);
                 }
             }
         }
