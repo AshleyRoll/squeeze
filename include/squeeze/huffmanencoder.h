@@ -529,8 +529,8 @@ namespace squeeze {
             constexpr auto MakeCharacterLookupTable = [=]() {
                 struct CharData
                 {
-                    std::size_t TreeIndex{0};
                     std::size_t BitLength{0};
+                    lib::bit_stream<256> ReverseStream{};    // worst case imaginable :)
                 };
 
                 // Build a fast lookup "table" for all the characters
@@ -540,18 +540,30 @@ namespace squeeze {
                     auto const &node = tree.at(nodeIdx);
                     if(node.is_leaf())  {
                         // this is a leaf, find the bit length for this character
-                        std::size_t len{0};
                         std::size_t idx{nodeIdx};
+                        CharData cd;
 
-                        // walk up the tree until we get to the root node at index 0
+                        // starting at the character leaf node, walk up the tree
+                        // capturing bits as we go. Note that we are traversing bottom up
+                        // so we have to write the bits into the stream reversed.
                         while(idx != 0) {
                             auto const &n = tree.at(idx);
-                            ++len;
+                            auto const &p = tree.at(n.parent());
+
+                            // determine if this is the one or zero node of the parent
+                            // if the "one" link is our node, bit will be true (1)
+                            // stream is initialised to zero, so we don't need to do clears
+                            if(p[1] == idx) {
+                                cd.ReverseStream.set(cd.BitLength);
+                            }
+
+                            // move to next bit
+                            ++cd.BitLength;
                             idx = n.parent();
                         }
 
                         // store the character data for this node's character
-                        charLookup.at(static_cast<std::size_t>(node.value())) = CharData{nodeIdx, len};
+                        charLookup.at(static_cast<std::size_t>(node.value())) = cd;
                     }
                 }
 
@@ -598,31 +610,15 @@ namespace squeeze {
 
                     auto cLen = cd.BitLength;
 
-                    // starting at the character leaf node, walk up the tree
-                    // capturing bits as we go. Note that we are traversing bottom up
-                    // so we have to write the bits into the stream reversed.
-                    std::size_t nidx{cd.TreeIndex};
-                    while(nidx != 0) {
-                        auto const &n = tree.at(nidx);
-                        auto const &p = tree.at(n.parent());
+                    // Note that we stored the bit stream in the character data reversed to make it simpler
+                    // to store, we just simply need to copy out backwards
+                    while(cLen > 0) {
+                        if(cd.ReverseStream.at(cLen-1))
+                            stream.set(firstBit+i);
 
-                        // determine if this is the one or zero node of the parent
-                        // if the "one" link is our node, bit will be true (1)
-                        // stream is initialised to zero, so we don't need to do clears
-                        auto const bitNum = firstBit + i + cLen - 1;
-                        if(p[1] == nidx) {
-                            stream.set(bitNum);
-                        } else {
-                            stream.clear(bitNum);
-                        }
-
-                        // move to next bit
+                        ++i;
                         --cLen;
-                        nidx = n.parent();
                     }
-
-                    // move to the next start position
-                    i += cd.BitLength;
                 }
 
                 return i;

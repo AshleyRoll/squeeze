@@ -7,11 +7,6 @@ using Catch::Matchers::Equals;
 
 static auto buildTableStrings = [] {
     return std::to_array<std::string_view> ({
-#if 1
-        "This is string One",
-        "This is string Two",
-        "This is string Three"
-#else
         "To be, or not to be--that is the question:\n"
         "Whether 'tis nobler in the mind to suffer\n"
         "The slings and arrows of outrageous fortune\n"
@@ -104,7 +99,6 @@ static auto buildTableStrings = [] {
         "That ends this strange eventful history,\n"
         "Is second childishness and mere oblivion,\n"
         "Sans teeth, sans eyes, sans taste, sans everything."
-#endif
     });
 };
 
