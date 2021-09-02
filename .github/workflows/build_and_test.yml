@@ -9,14 +9,14 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  
-strategy:
-  matrix:
-    compiler: [g++, clang++]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [g++, clang++]
+
 
     steps:
     - uses: actions/checkout@v2
@@ -32,6 +32,6 @@ jobs:
 
     - name: Test
       working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
+      # Execute tests defined by the CMake configuration.
       run: ctest -C ${{env.BUILD_TYPE}}
-      
+
