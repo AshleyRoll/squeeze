@@ -658,7 +658,7 @@ namespace squeeze {
     {
     public:
 
-        static constexpr auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
+        static consteval auto Compile(CallableGivesIterableStringViews auto makeStringsLambda)
         {
             constexpr auto const encoding = huffman::MakeEncodedBitStream(makeStringsLambda);
 
