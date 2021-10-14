@@ -48,7 +48,6 @@ namespace squeeze
 
             // work out the size of the result.
             constexpr auto NumStrings = std::distance(st.begin(), st.end());
-
             constexpr auto TotalStringLength = std::accumulate(
                     st.begin(), st.end(), std::size_t{0},
                     [](auto total, auto const &sv){ return total + sv.size(); });

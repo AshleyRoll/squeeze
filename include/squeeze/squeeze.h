@@ -86,14 +86,14 @@ namespace squeeze
 
 
         template<typename TEncoder>
-        static consteval auto CompileTable(CallableGivesIterableStringViews auto f) {
+        static constexpr auto CompileTable(CallableGivesIterableStringViews auto f) {
             constexpr auto data = TEncoder::Compile(f);
             StringTableDataImpl<decltype(data)> result{data};
             return result;
         }
 
         template<typename TKey>
-        static consteval auto MapToStrings(CallableGivesIterableKeyedStringViews<TKey> auto f) -> CallableGivesIterableStringViews auto
+        static constexpr auto MapToStrings(CallableGivesIterableKeyedStringViews<TKey> auto f) -> CallableGivesIterableStringViews auto
         {
             return [=]() {
                 constexpr auto stringmap = f();
@@ -109,7 +109,7 @@ namespace squeeze
         }
 
         template<typename TKey, typename TEncoder>
-        static consteval auto CompileMap(CallableGivesIterableKeyedStringViews<TKey> auto f) {
+        static constexpr auto CompileMap(CallableGivesIterableKeyedStringViews<TKey> auto f) {
             constexpr auto map = f();
             constexpr auto NumStrings = std::distance(map.begin(), map.end());
 
@@ -136,13 +136,13 @@ namespace squeeze
 
 
     template<typename TEncoder = HuffmanEncoder>
-    consteval auto StringTable(CallableGivesIterableStringViews auto makeStringsLambda)
+    constexpr auto StringTable(CallableGivesIterableStringViews auto makeStringsLambda)
     {
         return impl::CompileTable<TEncoder>(makeStringsLambda);
     }
 
     template<typename TKey, typename TEncoder = HuffmanEncoder>
-    consteval auto StringMap(CallableGivesIterableKeyedStringViews<TKey> auto makeStringsLambda)
+    constexpr auto StringMap(CallableGivesIterableKeyedStringViews<TKey> auto makeStringsLambda)
     {
         return impl::CompileMap<TKey, TEncoder>(makeStringsLambda);
     }
