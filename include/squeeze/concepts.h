@@ -16,7 +16,7 @@ namespace squeeze
     template<typename T>
     concept CallableGivesIterableStringViews = requires(T t) {
         t();            // is callable
-        std::input_iterator<decltype(t().begin())>;    // result has iterators
+        requires std::input_iterator<decltype(t().begin())>;    // result has iterators
         // result iterates through string_views
         std::is_same_v<decltype(t().begin()), std::string_view>;
     };
@@ -25,7 +25,7 @@ namespace squeeze
     concept CallableGivesIterableKeyedStringViews = requires(T t, K k)
     {
         t();            // is callable
-        std::input_iterator<decltype(t().begin())>;    // result has iterators
+        requires std::input_iterator<decltype(t().begin())>;    // result has iterators
         // result iterates through string_views
         std::is_same_v<decltype(t().begin()), KeyedStringView<K>>;
     };

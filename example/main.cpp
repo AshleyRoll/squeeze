@@ -18,13 +18,14 @@ static constexpr auto buildMapStrings = [] {
 };
 
 // defaults to huffman encoding
-static constexpr auto map = squeeze::StringMap<Key>(buildMapStrings);
+[[gnu::section(".compressedmap")]]
+constexpr auto map = squeeze::StringMap<Key>(buildMapStrings);
 
 int main()
 {
     // grab the first compressed string and dump it to stdout.
     static constexpr auto str1 = map.get(Key::String_1);
-    for (const auto &c : str1) {
+    for (auto const &c : str1) {
         std::putchar(c);
     }
 
